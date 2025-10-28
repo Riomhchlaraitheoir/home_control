@@ -305,10 +305,12 @@ checksum = "69f7f8c3906b62b754cd5326047894316021dcfe5a194c8ea52bdd94934a3457"
 name = "arp"
 version = "0.1.0"
 dependencies = [
- "leaky-bucket",
+ "derive_more 2.0.1",
  "pnet",
+ "simple-log",
  "thiserror 2.0.17",
  "tokio",
+ "tracing",
 ]
 
 [[package]]
@@ -1125,6 +1127,7 @@ checksum = "7f24254aa9a54b5c858eaee2f5bccdb46aaf0e486a595ed5fd8f86ba55232a70"
 name = "home_control"
 version = "0.1.0"
 dependencies = [
+ "arp",
  "control",
  "log",
  "rumqttc",
@@ -1484,17 +1487,6 @@ name = "lazy_static"
 version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bbd2bcb4c963f2ddae06a2efc7e9f3591312473c50c6685e1f298068316e66fe"
-
-[[package]]
-name = "leaky-bucket"
-version = "1.1.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0a396bb213c2d09ed6c5495fd082c991b6ab39c9daf4fff59e6727f85c73e4c5"
-dependencies = [
- "parking_lot",
- "pin-project-lite",
- "tokio",
-]
 
 [[package]]
 name = "libc"

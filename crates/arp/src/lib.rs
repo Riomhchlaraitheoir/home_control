@@ -1,3 +1,4 @@
+use derive_more::Deref;
 use pnet::datalink::{Channel, DataLinkReceiver, DataLinkSender, NetworkInterface};
 use pnet::packet::arp::{ArpHardwareTypes, ArpOperations, ArpPacket, MutableArpPacket};
 use pnet::packet::ethernet::{EtherTypes, EthernetPacket, MutableEthernetPacket};
@@ -9,6 +10,7 @@ use std::thread::sleep;
 use std::time::{Duration, Instant};
 use thiserror::Error;
 use tokio::sync::watch::{Receiver, Sender, channel};
+use tracing::{debug, debug_span, trace};
 
 #[derive(Debug, Clone)]
 pub struct NetworkDevice {
@@ -17,22 +19,39 @@ pub struct NetworkDevice {
 }
 
 #[derive(Debug)]
-pub struct NetworkScanner {
+pub struct NetworkScannerConfig {
+    /// the length of time to wait before deeming the device offline
     pub timeout: Duration,
-    pub interval: Duration,
-    pub interface: NetworkInterface,
-    pub senders: HashMap<MacAddr, Sender<Option<Ipv4Addr>>>,
+    /// the length of time to wait before confirming that a device is still online
+    pub confirm_interval: Duration,
+    /// the length of time to wait before scanning for an offline device
+    pub scan_interval: Duration,
+    /// The range of IP addresses to check
     pub ip_range: Range<Ipv4Addr>,
-    pub local: (MacAddr, Ipv4Addr),
+    /// The device to scan for
+    pub device: MacAddr,
+}
+
+#[derive(Debug, Deref)]
+pub struct NetworkScanner {
+    #[deref]
+    config: NetworkScannerConfig,
+    interface: NetworkInterface,
+    sender: Sender<Option<Ipv4Addr>>,
+    local: (MacAddr, Ipv4Addr),
+}
+
+struct State {
+    sender: Box<dyn DataLinkSender>,
+    receiver: Box<dyn DataLinkReceiver>,
+    template: ArpTemplate,
 }
 
 impl NetworkScanner {
     pub fn new(
         interface_name: &str,
-        ip_range: Range<Ipv4Addr>,
-        timeout: Duration,
-        interval: Duration,
-    ) -> Result<Self, Error> {
+        config: NetworkScannerConfig,
+    ) -> Result<(Self, Receiver<Option<Ipv4Addr>>), Error> {
         let interface = pnet::datalink::interfaces()
             .into_iter()
             .find(|i| i.name == interface_name && !i.is_loopback())
@@ -46,29 +65,176 @@ impl NetworkScanner {
             })
             .unwrap();
 
-        let local_mac = interface.mac.unwrap();
-        Ok(Self {
-            interval,
-            timeout,
-            interface,
-            senders: HashMap::new(),
-            ip_range,
-            local: (local_mac, local_ipv4),
-        })
-    }
-
-    pub fn subscribe(&mut self, mac: MacAddr) -> Receiver<Option<Ipv4Addr>> {
         let (sender, receiver) = channel(None);
-        self.senders.insert(mac, sender);
-        receiver
+
+        let local_mac = interface.mac.unwrap();
+        Ok((
+            Self {
+                config,
+                interface,
+                sender,
+                local: (local_mac, local_ipv4),
+            },
+            receiver,
+        ))
     }
 
     pub fn run(self) -> ! {
-        let mut cache = HashMap::<Ipv4Addr, MacAddr>::new();
-        let (mut sender, mut receiver) = build_eth_channel(&self.interface);
-        let (source_mac, source_ipv4) = self.local;
-        let mut pkt_buf =
-            [0u8; EthernetPacket::minimum_packet_size() + ArpPacket::minimum_packet_size()];
+        debug_span!(target: "arp", "ARP scanner running");
+        let (sender, receiver) = build_eth_channel(&self.interface);
+        let (source_mac, source_ip) = self.local;
+        let template = ArpTemplate::new(source_mac, source_ip);
+        let mut state = State {
+            sender,
+            receiver,
+            template,
+        };
+        debug!("Beginning device loop");
+        let mut current_ip = None;
+        let mac = self.device;
+        loop {
+            trace!("Checking {}", mac);
+            if let Some(ip) = current_ip {
+                debug!("confirming IP: {ip}");
+                if !self.confirm_ip(&mut state, mac, ip) {
+                    debug!("IP outdated");
+                    current_ip = None;
+                } else {
+                    debug!("IP confirmed")
+                }
+            }
+            if current_ip.is_none() {
+                debug!("Scanning for new IP");
+                current_ip = self.get_ip_for(&mut state, mac);
+                if current_ip.is_none() {
+                    trace!("Device is offline")
+                }
+            }
+            self.sender
+                .send(current_ip)
+                .expect("failed to send ARP update to channel");
+
+            if current_ip.is_none() {
+                sleep(self.scan_interval);
+            } else {
+                sleep(self.confirm_interval);
+            }
+        }
+    }
+
+    #[allow(dead_code)] // not currently used, but may still be a useful example
+    fn all_current_ips(&self, state: &mut State, ip_by_mac: &mut HashMap<MacAddr, Ipv4Addr>) {
+        ip_by_mac.clear();
+        let (source_mac, source_ip) = self.local;
+        let start = Instant::now();
+        for ip in self.ip_range.clone() {
+            if ip == source_ip {
+                // do not check this machine's IP, that would be silly
+                continue;
+            }
+            let pkt = state.template.execute(ip, MacAddr::broadcast());
+            state.sender.send_to(pkt, None).unwrap().unwrap();
+        }
+
+        loop {
+            let buf = state.receiver.next().unwrap();
+
+            if buf.len() < EthernetPacket::minimum_packet_size() + ArpPacket::minimum_packet_size()
+            {
+                if Instant::now().duration_since(start) > self.timeout {
+                    break;
+                }
+                continue;
+            }
+
+            let pkt_arp = ArpPacket::new(&buf[EthernetPacket::minimum_packet_size()..]).unwrap();
+
+            if pkt_arp.get_target_hw_addr() == source_mac {
+                let ip = pkt_arp.get_sender_proto_addr();
+                let mac = pkt_arp.get_sender_hw_addr();
+                ip_by_mac.insert(mac, ip);
+            }
+
+            if Instant::now().duration_since(start) > self.timeout {
+                break;
+            }
+        }
+    }
+
+    fn get_ip_for(&self, state: &mut State, mac: MacAddr) -> Option<Ipv4Addr> {
+        for ip in self.ip_range.clone() {
+            if ip == self.local.1 {
+                // do not check this machine's IP, that would be silly
+                continue;
+            }
+            let pkt = state.template.execute(ip, mac);
+            state.sender.send_to(pkt, None).unwrap().unwrap();
+        }
+        let start = Instant::now();
+
+        loop {
+            let buf = state.receiver.next().unwrap();
+
+            if buf.len() < EthernetPacket::minimum_packet_size() + ArpPacket::minimum_packet_size()
+            {
+                if Instant::now().duration_since(start) > self.timeout {
+                    break None;
+                }
+                continue;
+            }
+
+            let pkt_arp = ArpPacket::new(&buf[EthernetPacket::minimum_packet_size()..]).unwrap();
+
+            if pkt_arp.get_target_hw_addr() == self.local.0 && pkt_arp.get_sender_hw_addr() == mac {
+                break Some(pkt_arp.get_sender_proto_addr());
+            }
+
+            if Instant::now().duration_since(start) > self.timeout {
+                break None;
+            }
+        }
+    }
+
+    fn confirm_ip(&self, state: &mut State, mac: MacAddr, ip: Ipv4Addr) -> bool {
+        let pkt = state.template.execute(ip, mac);
+        state.sender.send_to(pkt, None).unwrap().unwrap();
+        let start = Instant::now();
+
+        loop {
+            let buf = state.receiver.next().unwrap();
+
+            if buf.len() < EthernetPacket::minimum_packet_size() + ArpPacket::minimum_packet_size()
+            {
+                if Instant::now().duration_since(start) > self.timeout {
+                    break false;
+                }
+                continue;
+            }
+
+            let pkt_arp = ArpPacket::new(&buf[EthernetPacket::minimum_packet_size()..]).unwrap();
+
+            if pkt_arp.get_target_hw_addr() == self.local.0
+                && pkt_arp.get_sender_hw_addr() == mac
+                && pkt_arp.get_sender_proto_addr() == ip
+            {
+                break true;
+            }
+
+            if Instant::now().duration_since(start) > self.timeout {
+                break false;
+            }
+        }
+    }
+}
+
+const COMBINED_PACKET_SIZE: usize =
+    EthernetPacket::minimum_packet_size() + ArpPacket::minimum_packet_size();
+
+struct ArpTemplate([u8; COMBINED_PACKET_SIZE]);
+
+impl ArpTemplate {
+    fn new(source_mac: MacAddr, source_ip: Ipv4Addr) -> Self {
+        let mut pkt_buf = [0u8; COMBINED_PACKET_SIZE];
 
         // Use scope blocks so we can reborrow our buffer
         {
@@ -92,85 +258,26 @@ impl NetworkScanner {
             pkt_arp.set_proto_addr_len(4);
             pkt_arp.set_operation(ArpOperations::Request);
             pkt_arp.set_sender_hw_addr(source_mac);
-            pkt_arp.set_sender_proto_addr(source_ipv4);
-            pkt_arp.set_target_hw_addr(MacAddr::broadcast());
+            pkt_arp.set_sender_proto_addr(source_ip);
         }
-        let mut ips = self.ip_range.clone().cycle();
-        'ip_loop: loop {
-            sleep(self.interval);
+        Self(pkt_buf)
+    }
 
-            let Some(ip) = ips.next() else {
-                unreachable!("ips is a cycling iterator, it will never end")
-            };
-            if ip == source_ipv4 {
-                // do not check this machine's IP, that would be silly
-                continue;
-            }
-            {
-                let mut pkt_arp =
-                    MutableArpPacket::new(&mut pkt_buf[EthernetPacket::minimum_packet_size()..])
-                        .unwrap();
-                pkt_arp.set_target_proto_addr(ip);
-            }
-            let start = Instant::now();
-            sender.send_to(&pkt_buf, None).unwrap().unwrap();
+    fn execute(&mut self, ip: Ipv4Addr, mac: MacAddr) -> &[u8] {
+        {
+            // Build our base ethernet frame
+            let mut pkt_eth = MutableEthernetPacket::new(&mut self.0).unwrap();
 
-            let mac = loop {
-                let buf = receiver.next().unwrap();
-
-                if buf.len()
-                    < EthernetPacket::minimum_packet_size() + ArpPacket::minimum_packet_size()
-                {
-                    if Instant::now().duration_since(start) > self.timeout {
-                        break None;
-                    }
-                    continue;
-                }
-
-                let pkt_arp =
-                    ArpPacket::new(&buf[EthernetPacket::minimum_packet_size()..]).unwrap();
-
-                if pkt_arp.get_sender_proto_addr() == ip
-                    && pkt_arp.get_target_hw_addr() == source_mac
-                {
-                    break Some(pkt_arp.get_sender_hw_addr());
-                }
-
-                if Instant::now().duration_since(start) > self.timeout {
-                    break None;
-                }
-            };
-            if let Some(latest) = mac {
-                // if mac address has been found
-                if let Some(previous) = cache.insert(ip, latest) {
-                    if latest == previous {
-                        // no update continue to next ip
-                        continue 'ip_loop;
-                    } else {
-                        if let Some(sender) = self.senders.get(&previous) {
-                            sender
-                                .send(None)
-                                .expect("failed to send ARP update to channel");
-                        }
-                        if let Some(sender) = self.senders.get(&latest) {
-                            sender
-                                .send(Some(ip))
-                                .expect("failed to send ARP update to channel");
-                        }
-                    }
-                } else if let Some(sender) = self.senders.get(&latest) {
-                    sender
-                        .send(Some(ip))
-                        .expect("failed to send ARP update to channel");
-                }
-            } else if let Some(previous) = cache.remove(&ip)
-                && let Some(sender) = self.senders.get(&previous)
-            {
-                sender
-                    .send(None)
-                    .expect("failed to send ARP update to channel");
-            }
+            pkt_eth.set_destination(mac);
         }
+        {
+            let mut pkt_arp =
+                MutableArpPacket::new(&mut self.0[EthernetPacket::minimum_packet_size()..])
+                    .unwrap();
+            pkt_arp.set_target_proto_addr(ip);
+            pkt_arp.set_target_hw_addr(mac)
+        }
+        &self.0
     }
 }
 

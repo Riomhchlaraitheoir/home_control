@@ -33,8 +33,10 @@ riz = "0.2.0"
 simple-log = "2.4.0"
 syn = "2.0.106"
 tracing = "0.1.41"
-wiz = { path = "crates/wiz" }
-zigbee = { path = "crates/zigbee" }
+wiz.path = "crates/wiz"
+zigbee.path = "crates/zigbee"
+arp.path = "crates/arp"
+pnet = "0.35.0"
 
 [package]
 name = "home_control"
@@ -48,6 +50,7 @@ default = []
 control = { workspace = true }
 zigbee = { workspace = true, optional = true }
 wiz = { workspace = true, optional = true }
+arp = { workspace = true, optional = true }
 
 [dev-dependencies]
 rumqttc = { workspace = true }
