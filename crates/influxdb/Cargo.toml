@@ -1,0 +1,10 @@
+[package]
+name = "influxdb"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+influxdb = { workspace = true }
+tokio = {workspace = true}
+control = { workspace = true }
+tracing = { workspace = true }

@@ -1,0 +1,14 @@
+[package]
+name = "control"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+light_ranged_integers = { workspace = true }
+futures = { workspace = true }
+async-timer = { workspace = true }
+macros = { workspace = true }
+async-executor = { workspace = true }
+thiserror = { workspace = true }
+
+[features]

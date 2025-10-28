@@ -1,0 +1,21 @@
+[package]
+name = "zigbee"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+rumqttc = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true }
+tokio-stream = { workspace = true }
+thiserror = { workspace = true }
+log = { workspace = true }
+control = { workspace = true }
+metric = { workspace = true }
+macros = { workspace = true }
+async-executor = { workspace = true }
+simple-log = { workspace = true }
+light_ranged_integers = { workspace = true }
+futures = { workspace = true }
+derive_more = { workspace = true }

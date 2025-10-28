@@ -1,0 +1,17 @@
+[package]
+name = "wiz"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+riz = { workspace = true }
+tracing = { workspace = true }
+thiserror = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+futures = "0.3.31"
+light_ranged_integers = { workspace = true }
+
+[dev-dependencies]
+tokio = { version = "1.48.0", features = ["full"] }
+simple-log = "2.4.0"
