@@ -2,24 +2,27 @@ use derive_more::Deref;
 use pnet::datalink::{Channel, DataLinkReceiver, DataLinkSender, NetworkInterface};
 use pnet::packet::arp::{ArpHardwareTypes, ArpOperations, ArpPacket, MutableArpPacket};
 use pnet::packet::ethernet::{EtherTypes, EthernetPacket, MutableEthernetPacket};
-use pnet::util::MacAddr;
 use std::collections::HashMap;
 use std::net::{IpAddr, Ipv4Addr};
 use std::ops::Range;
 use std::thread::sleep;
 use std::time::{Duration, Instant};
+use bon::bon;
+use futures::{Stream, StreamExt};
 use thiserror::Error;
 use tokio::sync::watch::{Receiver, Sender, channel};
+use tokio_stream::wrappers::WatchStream;
 use tracing::{debug, debug_span, trace};
+use control::{Device, ExposesSubManager};
 
-#[derive(Debug, Clone)]
-pub struct NetworkDevice {
-    pub ip: Ipv4Addr,
-    pub mac: MacAddr,
-}
+pub use pnet::util::MacAddr;
 
 #[derive(Debug)]
 pub struct NetworkScannerConfig {
+    /// The name of the target device (to be included in logs)
+    pub name: String,
+    /// The name of the network interface to use
+    pub interface_name: Option<String>,
     /// the length of time to wait before deeming the device offline
     pub timeout: Duration,
     /// the length of time to wait before confirming that a device is still online
@@ -32,13 +35,79 @@ pub struct NetworkScannerConfig {
     pub device: MacAddr,
 }
 
+#[derive(Default)]
+pub struct ArpManager {
+    scanners: Vec<ArpScanner>
+}
+
+impl ArpManager {
+    pub fn run(self) {
+        for scanner in self.scanners {
+            std::thread::spawn(|| scanner.run());
+        }
+    }
+}
+
 #[derive(Debug, Deref)]
-pub struct NetworkScanner {
+pub struct ArpScanner {
     #[deref]
     config: NetworkScannerConfig,
     interface: NetworkInterface,
     sender: Sender<Option<Ipv4Addr>>,
     local: (MacAddr, Ipv4Addr),
+}
+
+pub struct ArpDevice(Receiver<Option<Ipv4Addr>>);
+
+#[bon]
+impl ArpDevice {
+    #[builder]
+    pub fn create(
+        manager: &mut impl ExposesSubManager<ArpManager>,
+        name: String,
+        /// The name of the network interface to use
+        interface_name: Option<String>,
+        /// the length of time to wait before deeming the device offline
+        timeout: Duration,
+        /// the length of time to wait before confirming that a device is still online
+        confirm_interval: Duration,
+        /// the length of time to wait before scanning for an offline device
+        scan_interval: Duration,
+        /// The range of IP addresses to check
+        ip_range: Range<Ipv4Addr>,
+        /// The device to scan for
+        device: MacAddr,
+    ) -> Result<Self, Error> {
+        Self::new(manager.exclusive(), NetworkScannerConfig {
+            name,
+            interface_name,
+            timeout,
+            confirm_interval,
+            scan_interval,
+            ip_range,
+            device,
+        })
+    }
+
+    pub fn ip_addr(&self) -> impl Stream<Item = Option<Ipv4Addr>> {
+        WatchStream::from_changes(self.0.clone())
+    }
+
+    pub fn online(&self) -> impl Stream<Item = bool> {
+        self.ip_addr().map(|ip| ip.is_some())
+    }
+}
+
+impl Device for ArpDevice {
+    type Args = NetworkScannerConfig;
+    type Manager = ArpManager;
+    type Error = Error;
+
+    fn new(manager: &mut Self::Manager, config: NetworkScannerConfig) -> Result<Self, Error> {
+        let (scanner, receiver) = ArpScanner::new(config)?;
+        manager.scanners.push(scanner);
+        Ok(ArpDevice(receiver))
+    }
 }
 
 struct State {
@@ -47,15 +116,12 @@ struct State {
     template: ArpTemplate,
 }
 
-impl NetworkScanner {
-    pub fn new(
-        interface_name: &str,
-        config: NetworkScannerConfig,
-    ) -> Result<(Self, Receiver<Option<Ipv4Addr>>), Error> {
+impl ArpScanner {
+    pub fn new(config: NetworkScannerConfig) -> Result<(Self, Receiver<Option<Ipv4Addr>>), Error> {
         let interface = pnet::datalink::interfaces()
             .into_iter()
-            .find(|i| i.name == interface_name && !i.is_loopback())
-            .ok_or_else(|| Error::InterfaceNotFound(interface_name.to_string()))?;
+            .find(|i| config.interface_name.as_ref().is_none_or(|name| name == &i.name) && !i.is_loopback())
+            .ok_or_else(|| Error::InterfaceNotFound(config.interface_name.clone()))?;
         let local_ipv4 = interface
             .ips
             .iter()
@@ -80,7 +146,7 @@ impl NetworkScanner {
     }
 
     pub fn run(self) -> ! {
-        debug_span!(target: "arp", "ARP scanner running");
+        debug_span!(target: "arp", "ARP scanner running for device: {}", self.name);
         let (sender, receiver) = build_eth_channel(&self.interface);
         let (source_mac, source_ip) = self.local;
         let template = ArpTemplate::new(source_mac, source_ip);
@@ -296,7 +362,7 @@ fn build_eth_channel(
 /// Simple error types for this demo
 #[derive(Debug, Error)]
 pub enum Error {
-    #[error("Interface {0} not found")]
+    #[error("Interface {0:?} not found")]
     /// Interface of this name did not exist
-    InterfaceNotFound(String),
+    InterfaceNotFound(Option<String>),
 }

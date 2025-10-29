@@ -2,66 +2,14 @@
 
 pub mod light;
 
-use futures::future::FusedFuture;
-use futures::FutureExt;
-use riz::models::Light as WizLight;
 use serde::{Deserialize, Serialize};
 use std::fmt::Debug;
 use std::net::{Ipv4Addr, UdpSocket};
 
-pub struct Light {
-    wiz: WizLight,
-}
-
-impl Light {
-    pub fn new(addr: Ipv4Addr, name: Option<&str>) -> Self {
-        Self {
-            wiz: WizLight::new(addr, name),
-        }
-    }
-
-    // fn switch(&self) {
-    //     self.wiz.set()
-    // }
-}
-
-struct LightSwitch<'a> {
-    wiz: &'a WizLight,
-}
-/*
-impl ReadValue for LightSwitch<'_> {
-    type Item = SwitchState;
-
-    fn get(&self) -> Box<dyn Future<Output=Result<Self::Item, Error>> + Unpin + Send + '_> {
-        let status = self.wiz.get_status().map_err(|error| {
-            Error::Communication(format!("failed to communicate with light: {error}"))
-        })?;
-        Ok(if status.emitting() {
-            SwitchState::On
-        } else {
-            SwitchState::Off
-        })
-    }
-}
-
-impl WriteValue for LightSwitch<'_> {
-    type Item = SwitchState;
-
-    fn set(&self, value: Self::Item) -> Box<dyn Future<Output=()> + Unpin + Send + '_> {
-        Box::new({
-            let mode = match value {
-                SwitchState::On => PowerMode::On,
-                SwitchState::Off => PowerMode::Off
-            };
-            self.wiz.set_power(&mode).map_err(|error| {
-                Error::Communication(format!("failed to communicate with light: {error}"))
-            })?;
-        })
-    }
-}
-*/
+pub use light::Light;
 
 #[derive(Debug, Clone, Deserialize)]
+#[allow(dead_code)]
 struct Response<T> {
     method: String,
     env: String,

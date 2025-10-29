@@ -1,4 +1,4 @@
-use arp::{NetworkScanner, NetworkScannerConfig};
+use arp::{ArpScanner, NetworkScannerConfig};
 use pnet::datalink::MacAddr;
 use std::net::Ipv4Addr;
 use std::time::Duration;
@@ -11,7 +11,7 @@ async fn main() {
             .level(Level::Trace).unwrap()
             .build()
     ).unwrap();
-    let (scanner, mut receiver) = NetworkScanner::new(
+    let (scanner, mut receiver) = ArpScanner::new(
         "enp14s0",
         NetworkScannerConfig {
             timeout: Duration::from_secs(5),

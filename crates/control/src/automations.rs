@@ -63,6 +63,18 @@ impl<A: Automation> AutomationSet for A {
     }
 }
 
+impl AutomationSet for Vec<Box<dyn AutomationSet>> {
+    fn futures<'a>(&'a mut self, futures: &mut Vec<BoxFuture<'a, ()>>) {
+        for set in self {
+            set.futures(futures);
+        }
+    }
+
+    fn size(&self) -> usize {
+        self.iter().map(|set| set.size()).sum()
+    }
+}
+
 /// A complete self-contained automation which is ready to run indefinitely
 pub trait Automation {
     /// run this automation.

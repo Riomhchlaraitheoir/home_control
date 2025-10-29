@@ -195,3 +195,22 @@ pub enum Error {
     #[error("Communication error: {0}")]
     Communication(String),
 }
+
+#[doc(hidden)]
+pub trait ExposesSubManager<M> {
+    fn shared(&self) -> &M;
+    fn exclusive(&mut self) -> &mut M;
+}
+
+/// A Device which can be used in the home_control system
+pub trait Device: Sized {
+    /// Creation args needed to create this device
+    type Args;
+    /// The manager type that this device needs
+    type Manager;
+    /// The error that can occur when creating a device
+    type Error;
+
+    /// creates the device
+    fn new(manager: &mut Self::Manager, args: Self::Args) -> Result<Self, Self::Error>;
+}

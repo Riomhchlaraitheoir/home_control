@@ -31,7 +31,7 @@ impl ToTokens for Device {
             (
                 Some(quote! { publish: tokio::sync::mpsc::Sender<crate::publish::Publish>, }),
                 Some(quote! { publish, }),
-                Some(quote! { let publish = worker.outgoing_publishes(); }),
+                Some(quote! { let publish = manager.outgoing_publishes(); }),
             )
         } else {
             (None, None, None)
@@ -40,7 +40,7 @@ impl ToTokens for Device {
             (
                 Some(quote! { updates: crate::Updates<#update>, }),
                 Some(quote! { updates, }),
-                Some(quote! { let updates = worker.subscribe(name.clone()); }),
+                Some(quote! { let updates = manager.subscribe(name.clone()); }),
             )
         } else {
             (None, None, None)
@@ -54,24 +54,30 @@ impl ToTokens for Device {
             #(#fields),*
         }
 
-
-
-        impl crate::Device for #name {
-            fn new(name: String, worker: &mut crate::Manager) -> Self {
-                #define_publish
-                #define_updates
-                Self {
-                    #(#values_set,)*
-                    #set_publish
-                    #set_updates
-                    name,
-                }
-            }
-
-            fn name(&self) -> &str {
-                &self.name
+        #[::bon::bon]
+        impl #name {
+            #[builder]
+            pub fn create(name: String, manager: &mut impl ::control::ExposesSubManager<crate::Manager>) -> Result<Self, Box<dyn ::std::error::Error>> {
+                    <Self as ::control::Device>::new(manager.exclusive(), name).map_err(|err| Box::new(err) as Box<dyn ::std::error::Error>)
             }
         }
+
+            impl ::control::Device for #name {
+                type Args = String;
+                type Manager = crate::Manager;
+                type Error = ::std::convert::Infallible;
+
+                fn new(manager: &mut crate::Manager, name: String) -> Result<Self, ::std::convert::Infallible> {
+                    #define_publish
+                    #define_updates
+                    Ok(Self {
+                        #(#values_set,)*
+                        #set_publish
+                        #set_updates
+                        name,
+                    })
+                }
+            }
 
         impl #name {
                         #(#methods)*

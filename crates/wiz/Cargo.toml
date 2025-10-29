@@ -4,13 +4,14 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
-riz = { workspace = true }
 tracing = { workspace = true }
 thiserror = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 futures = { workspace = true }
 light_ranged_integers = { workspace = true }
+control.workspace = true
+bon = "3.8.1"
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["full"] }

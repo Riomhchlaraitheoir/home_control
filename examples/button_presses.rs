@@ -1,11 +1,11 @@
+use control::StreamCustomExt;
 use home_control::zigbee::devices::philips::HueSmartButton;
-use home_control::Sensor;
+use home_control::{Manager, Sensor};
 use log::Level;
 use rumqttc::MqttOptions;
 use simple_log::LogConfigBuilder;
 use std::time::Duration;
 use tokio_stream::StreamExt;
-use control::StreamCustomExt;
 
 #[tokio::main]
 async fn main() {
@@ -20,9 +20,13 @@ async fn main() {
     let mut mqttoptions = MqttOptions::new("rumqtt-sync", "localhost", 1883);
     mqttoptions.set_keep_alive(Duration::from_secs(5));
 
-    let mut worker = zigbee::Manager::new();
-    worker.set_mqtt_options(mqttoptions);
-    let button: HueSmartButton = worker.add_device("test_button");
+    let mut worker = Manager::new();
+    worker.zigbee.set_mqtt_options(mqttoptions);
+    let button = HueSmartButton::create()
+        .manager(&mut worker)
+        .name("test_button".to_string())
+        .call()
+        .unwrap();
     worker.start();
 
     let button_events = button.events();

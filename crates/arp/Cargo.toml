@@ -7,8 +7,12 @@ edition.workspace = true
 pnet = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["sync", "macros", "rt-multi-thread"] }
+tokio-stream = { version = "0.1.17", features = ["sync"] }
 tracing = { workspace = true, features = ["log"] }
 derive_more = { workspace = true, features = ["deref"] }
+control.workspace = true
+futures.workspace = true
+bon = "3.8.1"
 
 [dev-dependencies]
 simple-log = { workspace = true }

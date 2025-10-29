@@ -1,5 +1,4 @@
 #![feature(push_mut)]
-#![allow(clippy::new_without_default)]
 #![allow(dead_code)] // TODO: remove once we have more complete examples
 // #![warn(missing_docs)]
 #![doc = include_str!("../README.md")]
@@ -41,14 +40,10 @@ pub struct Manager {
     outgoing: mpsc::Receiver<Publish>,
 }
 
-pub trait Device {
-    fn new(name: String, worker: &mut Manager) -> Self;
-
-    fn name(&self) -> &str;
-}
-
-pub trait DeviceSet {
-    fn new(worker: &mut Manager) -> Self;
+impl Default for Manager {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl Manager {
@@ -81,14 +76,6 @@ impl Manager {
 
     pub(crate) fn outgoing_publishes(&self) -> mpsc::Sender<Publish> {
         self.publishes.clone()
-    }
-
-    pub fn add_device<D: Device>(&mut self, name: impl Into<String>) -> D {
-        D::new(name.into(), self)
-    }
-
-    pub fn add_device_set<D: DeviceSet>(&mut self) -> D {
-        D::new(self)
     }
 
     pub fn start(self) -> Worker {

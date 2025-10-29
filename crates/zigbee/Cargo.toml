@@ -19,3 +19,4 @@ simple-log = { workspace = true }
 light_ranged_integers = { workspace = true }
 futures = { workspace = true }
 derive_more = { workspace = true }
+bon = "3.8.1"

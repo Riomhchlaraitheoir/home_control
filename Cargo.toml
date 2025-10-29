@@ -51,6 +51,7 @@ control = { workspace = true }
 zigbee = { workspace = true, optional = true }
 wiz = { workspace = true, optional = true }
 arp = { workspace = true, optional = true }
+macros = { workspace = true }
 
 [dev-dependencies]
 rumqttc = { workspace = true }
@@ -58,3 +59,15 @@ log = {workspace = true}
 simple-log = { workspace = true }
 tokio = {workspace = true}
 tokio-stream = {workspace = true}
+
+[[example]]
+name = "button_presses"
+required-features = ["zigbee"]
+
+[[example]]
+name = "light_switch"
+required-features = ["zigbee"]
+
+[[example]]
+name = "device_set"
+required-features = ["zigbee", "arp", "wiz"]
