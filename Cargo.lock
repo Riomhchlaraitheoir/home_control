@@ -269,6 +269,7 @@ dependencies = [
  "light_ranged_integers",
  "macros",
  "thiserror 2.0.17",
+ "tracing",
 ]
 
 [[package]]

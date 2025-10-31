@@ -22,7 +22,6 @@ pub struct Manager {
     pub zigbee: zigbee::Manager,
     #[cfg(feature = "arp")]
     pub arp: arp::ArpManager,
-    pub automations: Vec<Box<dyn AutomationSet>>,
     // a dummy manager for platforms without any manager
     dummy: ()
 }
@@ -36,10 +35,10 @@ impl Manager {
         D::new(self)
     }
 
-    pub fn start(self) {
+    pub fn start<'b>(self, automations: impl AutomationSet<'b>) {
         #[cfg(feature = "zigbee")]
         let _worker = self.zigbee.start();
-        run_automations(self.automations)
+        run_automations(automations)
     }
 
     pub fn add_device<D: Device>(&mut self, args: D::Args) -> Result<D, D::Error> where Self: ExposesSubManager<D::Manager> {

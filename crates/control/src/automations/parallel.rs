@@ -4,15 +4,16 @@ use futures::stream::FusedStream;
 use std::ops::DerefMut;
 use std::pin::Pin;
 use std::task::{Context, Poll};
+use tracing::warn;
 
 /// creates an automation of the `parallel` type, the behaviour is that if a trigger occurs while
 /// the previous run is ongoing, then a second run will be started in parallel to the first, for
 /// this reason [AutomationMutAction](super::AutomationMutAction) is not permitted here since it
 /// requires an exclusive reference to run it
-pub fn parallel<S, A>(max_parallel_runs: usize, input: S, automation: A) -> impl Automation
+pub fn parallel<'a, S, A>(max_parallel_runs: usize, input: S, automation: A) -> impl Automation<'a>
 where
-    S: FusedStream + Unpin + Send,
-    A: AutomationAction<S::Item> + Send + Sync + 'static,
+    S: FusedStream + Unpin + Send + 'a,
+    A: AutomationAction<S::Item> + Send + Sync + 'a,
     S::Item: Send {
     Parallel {
         max_parallel: max_parallel_runs,
@@ -27,10 +28,10 @@ struct Parallel<S, A> {
     automation: A,
 }
 
-impl<S, A> Automation for Parallel<S, A>
+impl<'a, S, A> Automation<'a> for Parallel<S, A>
 where
-    S: FusedStream + Unpin + Send,
-    A: AutomationAction<S::Item> + Send + Sync + 'static,
+    S: FusedStream + Unpin + Send + 'a,
+    A: AutomationAction<S::Item> + Send + Sync + 'a,
     S::Item: Send
 {
     fn run(&mut self) -> impl Future<Output = ()> {
@@ -47,14 +48,14 @@ struct ParallelFuture<'a, S, A> {
     input: Pin<&'a mut S>,
     automation: &'a A,
     count: usize,
-    running: Vec<Option<BoxFuture<'a, ()>>>,
+    running: Vec<Option<BoxFuture<'a, Result<(), String>>>>,
 }
 
 impl<'a, S, A> Future
     for ParallelFuture<'a, S, A>
 where
-    S: FusedStream + Unpin + Send,
-    A: AutomationAction<S::Item> + Send + Sync + 'static,
+    S: FusedStream + Unpin + Send + 'a,
+    A: AutomationAction<S::Item> + Send + Sync + 'a,
     S::Item: Send
 {
     type Output = ();
@@ -77,10 +78,13 @@ where
         for slot in running {
             if let Some(future) = slot.as_mut() {
                 match future.as_mut().poll(cx) {
-                    Poll::Ready(()) => {
+                    Poll::Ready(result) => {
                         // remove future
                         let _ = slot.take();
                         *count -= 1;
+                        if let Err(error) = result {
+                            warn!("automation error: {error}");
+                        }
                     }
                     Poll::Pending => {}
                 }

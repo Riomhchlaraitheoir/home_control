@@ -10,5 +10,6 @@ async-timer = { workspace = true }
 macros = { workspace = true }
 async-executor = { workspace = true }
 thiserror = { workspace = true }
+tracing = { workspace = true }
 
 [features]

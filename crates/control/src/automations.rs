@@ -20,7 +20,7 @@ use macros::automation_sets;
 
 /// Run all given automations, will only return when all automations have ended (likely due to
 /// closed input), this should only be expected to happen when the program is exiting
-pub fn run_automations(mut automations: impl AutomationSet) {
+pub fn run_automations<'a>(mut automations: impl AutomationSet<'a>) {
     let mut futures = Vec::with_capacity(automations.size());
     automations.futures(&mut futures);
 
@@ -43,9 +43,9 @@ pub fn run_automations(mut automations: impl AutomationSet) {
 /// Since the [Automation] trait is not dyn compatible, collections like [Vec] are not suitable
 /// This trait is implemented for tuples containing automations, up to a tuple size of 21
 /// If you need more automations in a set, then you can nest the tuples
-pub trait AutomationSet {
+pub trait AutomationSet<'a>: 'a {
     /// Returns all futures from automations in this set
-    fn futures<'a>(&'a mut self, futures: &mut Vec<BoxFuture<'a, ()>>);
+    fn futures<'b>(&'b mut self, futures: &mut Vec<BoxFuture<'b, ()>>) where 'a:'b;
 
     /// returns the total number of automations in this set
     fn size(&self) -> usize;
@@ -53,8 +53,11 @@ pub trait AutomationSet {
 
 automation_sets!(21);
 
-impl<A: Automation> AutomationSet for A {
-    fn futures<'a>(&'a mut self, futures: &mut Vec<BoxFuture<'a, ()>>) {
+impl<'a, A: Automation<'a>> AutomationSet<'a> for A {
+    fn futures<'b>(&'b mut self, futures: &mut Vec<BoxFuture<'b, ()>>)
+    where
+        'a: 'b,
+    {
         futures.push(Box::pin(self.run()))
     }
 
@@ -63,8 +66,8 @@ impl<A: Automation> AutomationSet for A {
     }
 }
 
-impl AutomationSet for Vec<Box<dyn AutomationSet>> {
-    fn futures<'a>(&'a mut self, futures: &mut Vec<BoxFuture<'a, ()>>) {
+impl<'a> AutomationSet<'a> for Vec<Box<dyn AutomationSet<'a>>> {
+    fn futures<'b>(&'b mut self, futures: &mut Vec<BoxFuture<'b, ()>>) where 'a: 'b {
         for set in self {
             set.futures(futures);
         }
@@ -76,49 +79,41 @@ impl AutomationSet for Vec<Box<dyn AutomationSet>> {
 }
 
 /// A complete self-contained automation which is ready to run indefinitely
-pub trait Automation {
+pub trait Automation<'a>: 'a {
     /// run this automation.
     /// the returned future should only finish when the input stream for the automation is closed
     fn run(&mut self) -> impl Future<Output=()> + Send;
 }
 
 /// An automation action which accepts a shared reference to self,
-///
-/// An async closure should implement this trait
-/// `AsyncFn(T)` with feature="nightly"
-/// `Fn(T) -> impl Future<Output=()>` otherwise
 pub trait AutomationAction<T> {
     /// run the action in response to a trigger
-    fn run(&self, trigger: T) -> impl Future<Output=()> + Send;
+    fn run(&self, trigger: T) -> impl Future<Output=Result<(), String>> + Send;
 }
 
 /// An automation action which accepts an exclusive reference to self, allowing this action to
 /// have mutable state.
 ///
 /// NOTE: Mutable actions **cannot** be used in the [parallel] automation type
-///
-/// An async closure should implement this trait
-/// `AsyncFnMut(T)` with feature="nightly"
-/// `FnMut(T) -> impl Future<Output=()>` otherwise
 pub trait AutomationMutAction<T> {
     /// run the action in response to a trigger
-    fn run(&mut self, trigger: T) -> impl Future<Output=()> + Send;
+    fn run(&mut self, trigger: T) -> impl Future<Output=Result<(), String>> + Send;
 }
 
 impl<F: Fn(T) -> Fut, Fut, T> AutomationAction<T> for F
 where
-    Fut: Future<Output=()> + Send,
+    Fut: Future<Output=Result<(), String>> + Send,
 {
-    fn run(&self, trigger: T) -> impl Future<Output=()> {
+    fn run(&self, trigger: T) -> impl Future<Output=Result<(), String>> {
         self(trigger)
     }
 }
 
 impl<F: FnMut(T) -> Fut, Fut, T> AutomationMutAction<T> for F
 where
-    Fut: Future<Output=()> + Send,
+    Fut: Future<Output=Result<(), String>> + Send,
 {
-    fn run(&mut self, trigger: T) -> impl Future<Output=()> {
+    fn run(&mut self, trigger: T) -> impl Future<Output=Result<(), String>> {
         self(trigger)
     }
 }
