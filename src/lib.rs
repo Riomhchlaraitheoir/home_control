@@ -1,6 +1,12 @@
-use control::automations::{run_automations, AutomationSet};
 pub use ::control::*;
+use async_executor::Executor;
+use async_signal::{Signal, Signals};
+use control::automations::AutomationSet;
+use futures::executor::block_on;
+use futures::future::join_all;
 pub use macros::DeviceSet;
+use std::time::Duration;
+use futures::{FutureExt, StreamExt};
 
 #[cfg(feature = "zigbee")]
 pub mod zigbee {
@@ -16,14 +22,17 @@ pub mod arp {
 }
 
 #[derive(Default)]
-#[allow(clippy::manual_non_exhaustive, reason = "The dummy field is needed to satisfy some traits for integrations without a manager type")]
+#[allow(
+    clippy::manual_non_exhaustive,
+    reason = "The dummy field is needed to satisfy some traits for integrations without a manager type"
+)]
 pub struct Manager {
     #[cfg(feature = "zigbee")]
     pub zigbee: zigbee::Manager,
     #[cfg(feature = "arp")]
     pub arp: arp::ArpManager,
     // a dummy manager for platforms without any manager
-    dummy: ()
+    dummy: (),
 }
 
 impl Manager {
@@ -35,13 +44,46 @@ impl Manager {
         D::new(self)
     }
 
-    pub fn start<'b>(self, automations: impl AutomationSet<'b>) {
-        #[cfg(feature = "zigbee")]
-        self.zigbee.start();
-        run_automations(automations)
+    pub fn start(self, automations: &mut impl AutomationSet) {
+            let executor = Executor::new();
+            #[cfg(feature = "zigbee")]
+            let (zigbee_jobs, zigbee_abort_handles) = block_on(self.zigbee.start());
+
+            let mut termination = Signals::new([Signal::Term, Signal::Int])
+                .expect("Failed to register signal handler");
+
+            #[cfg(feature = "arp")]
+            self.arp.run();
+
+            let mut jobs = Vec::with_capacity(automations.size());
+            automations.futures(&mut jobs);
+
+            let mut tasks = jobs
+                .into_iter()
+                .map(|job| executor.spawn(job))
+                .collect::<Vec<_>>();
+            #[cfg(feature = "zigbee")]
+            tasks.extend(zigbee_jobs.into_iter().map(|job| executor.spawn(job)));
+
+            block_on(async {
+                termination.next().await;
+                #[cfg(feature = "zigbee")]
+                for handle in zigbee_abort_handles {
+                    handle.abort();
+                }
+                let mut timeout = async_timer::new_timer(Duration::from_millis(1000)).fuse();
+                let mut tasks = join_all(tasks).fuse();
+                futures::select! {
+                    _ = tasks => {}
+                    _ = timeout => {}
+                }
+            });
     }
 
-    pub fn add_device<D: Device>(&mut self, args: D::Args) -> Result<D, D::Error> where Self: ExposesSubManager<D::Manager> {
+    pub fn add_device<D: Device>(&mut self, args: D::Args) -> Result<D, D::Error>
+    where
+        Self: ExposesSubManager<D::Manager>,
+    {
         D::new(self.exclusive(), args)
     }
 }

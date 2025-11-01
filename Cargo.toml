@@ -13,33 +13,30 @@ missing_docs = "warn"
 rumqttc = "0.25.0"
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.145"
-tokio = { version = "1.47.1", features = ["rt-multi-thread"] }
-tokio-util = "0.7.16"
+tokio = { version = "1.47.1", features = ["rt-multi-thread", "sync", "macros"] }
 tokio-stream = { version = "0.1.17", features = ["sync"] }
 thiserror = "2.0.17"
 futures = "0.3.31"
 light_ranged_integers = { git = "https://gitlab.com/MassiminoilTrace/light-ranged-integers.git", features = ["serde"] }
-# TODO: remove in favour of tracing
-log = "0.4.28"
 async-executor = "1.13.3"
-async-io = "2.6.0"
 async-timer = "1.0.0-beta.15"
 control = { path = "crates/control" }
-derive_more = "2.0.1"
+derive_more = { version = "2.0.1", features = ["full"] }
 influxdb = "0.7.2"
 macros = { path = "crates/macros" }
 macros-impl = { path = "crates/macros-impl" }
 metric = { path = "crates/metric" }
 proc-macro2 = "1.0.101"
 quote = "1.0.41"
-riz = "0.2.0"
 simple-log = "2.4.0"
-syn = "2.0.106"
+syn = { version = "2.0.106", features = ["full", "extra-traits"] }
 tracing = "0.1.41"
 wiz.path = "crates/wiz"
 zigbee.path = "crates/zigbee"
 arp.path = "crates/arp"
 pnet = "0.35.0"
+async-signal = "0.2.13"
+bon = "3.8.1"
 
 [package]
 name = "home_control"
@@ -55,10 +52,15 @@ zigbee = { workspace = true, optional = true }
 wiz = { workspace = true, optional = true }
 arp = { workspace = true, optional = true }
 macros = { workspace = true }
+async-signal = { workspace = true }
+tokio = { workspace = true }
+async-executor = { workspace = true }
+futures = { workspace = true }
+async-timer = { workspace = true }
 
 [dev-dependencies]
 rumqttc = { workspace = true }
-log = {workspace = true}
+log = "0.4.28"
 simple-log = { workspace = true }
 tokio = {workspace = true}
 tokio-stream = {workspace = true}

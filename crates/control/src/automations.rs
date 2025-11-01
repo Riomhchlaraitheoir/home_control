@@ -10,33 +10,12 @@ mod parallel;
 mod queued;
 mod single;
 
-use async_executor::{Executor};
 pub use cancel::cancel;
 use futures::future::BoxFuture;
+use macros::automation_sets;
 pub use parallel::parallel;
 pub use queued::queued;
 pub use single::single;
-use macros::automation_sets;
-
-/// Run all given automations, will only return when all automations have ended (likely due to
-/// closed input), this should only be expected to happen when the program is exiting
-pub fn run_automations<'a>(mut automations: impl AutomationSet<'a>) {
-    let mut futures = Vec::with_capacity(automations.size());
-    automations.futures(&mut futures);
-
-    let executor = Executor::new();
-    let mut tasks = vec![];
-
-    executor.spawn_many(futures, &mut tasks);
-
-    futures::executor::block_on(
-        executor.run(async {
-            for task in tasks {
-                task.await
-            }
-        })
-    )
-}
 
 /// A set of one or more automations
 ///
@@ -44,9 +23,9 @@ pub fn run_automations<'a>(mut automations: impl AutomationSet<'a>) {
 /// - any [Automation] implementor
 /// - any tuple up to 21 elements where each element implements [AutomationSet]
 /// - A `Vec<Box<dyn AutomationSet>>`
-pub trait AutomationSet<'a>: 'a {
+pub trait AutomationSet {
     /// Returns all futures from automations in this set
-    fn futures<'b>(&'b mut self, futures: &mut Vec<BoxFuture<'b, ()>>) where 'a:'b;
+    fn futures<'a>(&'a mut self, futures: &mut Vec<BoxFuture<'a, ()>>);
 
     /// returns the total number of automations in this set
     fn size(&self) -> usize;
@@ -54,12 +33,10 @@ pub trait AutomationSet<'a>: 'a {
 
 automation_sets!(21);
 
-impl<'a, A: Automation<'a>> AutomationSet<'a> for A {
-    fn futures<'b>(&'b mut self, futures: &mut Vec<BoxFuture<'b, ()>>)
-    where
-        'a: 'b,
+impl<A: Automation> AutomationSet for A {
+    fn futures<'a>(&'a mut self, futures: &mut Vec<BoxFuture<'a, ()>>)
     {
-        futures.push(Box::pin(self.run()))
+        futures.push(Box::pin(self.run()));
     }
 
     fn size(&self) -> usize {
@@ -67,23 +44,11 @@ impl<'a, A: Automation<'a>> AutomationSet<'a> for A {
     }
 }
 
-impl<'a> AutomationSet<'a> for Vec<Box<dyn AutomationSet<'a>>> {
-    fn futures<'b>(&'b mut self, futures: &mut Vec<BoxFuture<'b, ()>>) where 'a: 'b {
-        for set in self {
-            set.futures(futures);
-        }
-    }
-
-    fn size(&self) -> usize {
-        self.iter().map(|set| set.size()).sum()
-    }
-}
-
 /// A complete self-contained automation which is ready to run indefinitely
-pub trait Automation<'a>: 'a {
+pub trait Automation {
     /// run this automation.
     /// the returned future should only finish when the input stream for the automation is closed
-    fn run(&mut self) -> impl Future<Output=()> + Send;
+    fn run<'a>(&'a mut self) -> impl Future<Output=()> + Send + 'a;
 }
 
 /// An automation action which accepts a shared reference to self,

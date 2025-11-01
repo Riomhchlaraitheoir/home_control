@@ -33,8 +33,10 @@ zigbee_device! {
     }
 }
 
+/// An action detected by the button
+#[allow(missing_docs, reason = "self-explanatory variants")]
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
-enum ButtonAction { Single, Double, Long }
+pub enum ButtonAction { Single, Double, Long }
 
 // https://www.zigbee2mqtt.io/devices/SNZB-02D.html
 zigbee_device! {

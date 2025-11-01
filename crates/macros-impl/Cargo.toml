@@ -8,6 +8,5 @@ workspace = true
 
 [dependencies]
 proc-macro2 = { workspace = true }
-syn = { workspace = true, features = ["full", "extra-traits"] }
+syn = { workspace = true }
 quote = { workspace = true }
-nonempty = "0.12.0"

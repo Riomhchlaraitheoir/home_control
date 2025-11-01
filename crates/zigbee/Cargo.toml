@@ -12,14 +12,10 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 tokio = { workspace = true }
 tokio-stream = { workspace = true }
-thiserror = { workspace = true }
-log = { workspace = true }
+tracing = { workspace = true }
 control = { workspace = true }
 metric = { workspace = true }
 macros = { workspace = true }
-async-executor = { workspace = true }
-simple-log = { workspace = true }
 light_ranged_integers = { workspace = true }
 futures = { workspace = true }
-derive_more = { workspace = true }
-bon = "3.8.1"
+bon = { workspace = true }

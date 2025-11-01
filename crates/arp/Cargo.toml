@@ -9,13 +9,13 @@ workspace = true
 [dependencies]
 pnet = { workspace = true }
 thiserror = { workspace = true }
-tokio = { workspace = true, features = ["sync", "macros", "rt-multi-thread"] }
-tokio-stream = { version = "0.1.17", features = ["sync"] }
-tracing = { workspace = true, features = ["log"] }
-derive_more = { workspace = true, features = ["deref"] }
+tokio = { workspace = true }
+tokio-stream = { workspace = true }
+tracing = { workspace = true }
+derive_more = { workspace = true }
 control.workspace = true
 futures.workspace = true
-bon = "3.8.1"
+bon = { workspace = true }
 
 [dev-dependencies]
 simple-log = { workspace = true }

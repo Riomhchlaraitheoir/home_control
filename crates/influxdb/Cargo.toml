@@ -8,6 +8,5 @@ workspace = true
 
 [dependencies]
 influxdb = { workspace = true }
-tokio = {workspace = true}
 control = { workspace = true }
 tracing = { workspace = true }

@@ -5,6 +5,7 @@ use rumqttc::MqttOptions;
 use simple_log::LogConfigBuilder;
 use std::time::Duration;
 use tokio_stream::StreamExt;
+use control::automations::{single, Automation};
 
 #[tokio::main]
 async fn main() {
@@ -23,20 +24,19 @@ async fn main() {
     manager.zigbee.set_mqtt_options(mqttoptions);
     let button: HueSmartButton = manager.add_device("test_button".to_string()).unwrap();
     let light: Light = manager.add_device("office_light".to_string()).unwrap();
-    manager.start(());
-
-    toggle_light_on_button(button.events(), light.state()).await;
+    let mut automations = toggle_light_on_button(button.events(), light.state());
+    manager.start(&mut automations);
 }
 
-async fn toggle_light_on_button(
+fn toggle_light_on_button(
     button: &impl Sensor<Item = ButtonEvent>,
-    light: &impl ToggleValue,
-) {
-    let mut button_presses = button.subscribe().filter(|event| {
+    light: &(impl ToggleValue + Send + Sync),
+) -> impl Automation {
+    let button_presses = button.subscribe().filter(|event| {
         debug!("received button event: {event:?}");
         *event == ButtonEvent::Press
     });
-    while button_presses.next().await.is_some() {
-        light.toggle().await.expect("failed to toggle light")
-    }
+    single(button_presses, async |_| {
+        light.toggle().await.map_err(|err| format!("failed to toggle light: {err}"))
+    })
 }
