@@ -1,16 +1,8 @@
 #![feature(push_mut)]
-#![allow(dead_code)] // TODO: remove once we have more complete examples
-// #![warn(missing_docs)]
 #![doc = include_str!("../README.md")]
 
 mod attribute;
 mod publish;
-pub mod devices {
-    pub mod philips;
-    pub mod sonoff;
-    pub mod aqara;
-    pub mod aurora;
-}
 
 use crate::publish::Publish;
 use control::ReadValue;
@@ -23,16 +15,26 @@ use serde::Deserialize;
 use serde_json::Value;
 use std::marker::PhantomData;
 use std::thread;
-use std::thread::JoinHandle;
-use tokio::sync::{broadcast, mpsc};
 use tokio::sync::broadcast::Sender;
+use tokio::sync::{broadcast, mpsc};
+use tokio_stream::wrappers::errors::BroadcastStreamRecvError;
+use tokio_stream::wrappers::BroadcastStream;
 use tokio_stream::Stream;
 use tokio_stream::StreamExt;
-use tokio_stream::wrappers::BroadcastStream;
-use tokio_stream::wrappers::errors::BroadcastStreamRecvError;
 
-pub use macros::DeviceSet;
+/// Definitions for all supported zigbee devices
+pub mod devices {
+    /// Philips devices
+    pub mod philips;
+    /// Sonoff devices
+    pub mod sonoff;
+    /// Aqara devices
+    pub mod aqara;
+    /// Aurora devices
+    pub mod aurora;
+}
 
+/// sets up the zigbee environment, defining MQTT connection parameters and devices
 pub struct Manager {
     mqtt_options: Option<MqttOptions>,
     subscriptions: Vec<Subscription>,
@@ -47,6 +49,7 @@ impl Default for Manager {
 }
 
 impl Manager {
+    /// Create a new manager
     pub fn new() -> Self {
         let (publishes, outgoing) = mpsc::channel::<Publish>(100);
         Self {
@@ -57,6 +60,7 @@ impl Manager {
         }
     }
 
+    /// Define the MQTT connection parameters
     pub fn set_mqtt_options(&mut self, options: MqttOptions) {
         self.mqtt_options = Some(options)
     }
@@ -78,7 +82,10 @@ impl Manager {
         self.publishes.clone()
     }
 
-    pub fn start(self) -> Worker {
+    /// spawns 2 threads
+    /// - one to handle incoming updates, passing them to the relevant channels
+    /// - another to handle outgoing publishes, sending them to the MQTT broker
+    pub fn start(self) {
         let mqttoptions = self.mqtt_options.expect("no mqtt options set");
         println!("creating client");
         let (client, connection) = Client::new(mqttoptions, 10);
@@ -90,10 +97,8 @@ impl Manager {
                 .expect("failed to start subscription")
         }
 
-        Worker {
-            subscriber: thread::spawn(move || Self::subscription_job(connection, subscriptions)),
-            publisher: thread::spawn(move || Self::publish_job(client, self.outgoing)),
-        }
+        thread::spawn(move || Self::subscription_job(connection, subscriptions));
+        thread::spawn(move || Self::publish_job(client, self.outgoing));
     }
 
     fn subscription_job(mut connection: Connection, subscriptions: Vec<Subscription>) {
@@ -135,12 +140,6 @@ impl Manager {
                 .expect("failed to publish payload")
         }
     }
-}
-
-#[allow(dead_code)] // may be used in the future, cost nothing now
-pub struct Worker {
-    subscriber: JoinHandle<()>,
-    publisher: JoinHandle<()>,
 }
 
 #[derive(Debug, Clone)]

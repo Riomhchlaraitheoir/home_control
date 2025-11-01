@@ -6,6 +6,9 @@ resolver = "2"
 version = "0.1.0"
 edition = "2024"
 
+[workspace.lints.rust]
+missing_docs = "warn"
+
 [workspace.dependencies]
 rumqttc = "0.25.0"
 serde = { version = "1.0.228", features = ["derive"] }

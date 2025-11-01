@@ -1,8 +1,9 @@
+use crate::device::{Mode, NumericKind, Type, Value, Variant};
+use crate::*;
 use proc_macro2::Span;
 use syn::parse::{Parse, ParseStream};
-use syn::{braced, Ident, Path, Token};
-use crate::*;
-use crate::device::{Mode, NumericKind, Type, Value, Variant};
+use syn::{braced, parse_quote, Attribute, Expr, ExprLit, Ident, Lit, LitStr, Meta, MetaNameValue, Path, Token};
+use syn::spanned::Spanned;
 
 mod kw {
     use syn::custom_keyword;
@@ -11,21 +12,46 @@ mod kw {
 
 impl Parse for Device {
     fn parse(input: ParseStream) -> syn::Result<Self> {
+        let docs = parse_docs(&input)?;
         input.parse::<Token![pub]>()?;
         let name: Ident = input.parse()?;
 
         let values_content;
         braced!(values_content in input);
 
+        let url: LitStr = values_content.parse()?;
+        if !url.value().starts_with("https://www.zigbee2mqtt.io/devices/") {
+            return Err(syn::Error::new(url.span(), "URL should be formatted as https://www.zigbee2mqtt.io/devices/<deviceID>"))
+        }
+        values_content.parse::<Token![,]>()?;
         let values = values_content.parse_terminated(Value::parse, Token![,])?;
         drop(values_content);
         let values = values.into_iter().collect();
-        Ok(Self { name, values })
+        Ok(Self { docs, url, name, values })
     }
+}
+
+fn parse_docs(input: &ParseStream) -> syn::Result<Vec<LitStr>> {
+    let attrs = input.call(Attribute::parse_outer)?;
+    let docs = attrs.into_iter().map(|attr| {
+        let span = attr.span();
+        let Meta::NameValue(MetaNameValue { path, eq_token: _, value }) = attr.meta else {
+            return Err(syn::Error::new(span, "only doc comment attributes allowed here"))
+        };
+        if path != parse_quote!(doc) {
+            return Err(syn::Error::new(span, "only doc comment attributes allowed here"))
+        }
+        let Expr::Lit(ExprLit { attrs: _ , lit: Lit::Str(doc) }) = value else {
+            return Err(syn::Error::new(span, "only doc comment attributes allowed here"))
+        };
+        Ok(doc)
+    }).collect::<Result<_, _>>()?;
+    Ok(docs)
 }
 
 impl Parse for Value {
     fn parse(input: ParseStream) -> syn::Result<Self> {
+        let docs = parse_docs(&input)?;
         let mut modifier_span = Option::<Span>::None;
         let mut stream_span = None;
         let mut get = false;
@@ -121,6 +147,7 @@ impl Parse for Value {
         }
         let value_type = input.parse()?;
         Ok(Self {
+            docs,
             mode,
             attribute_name,
             value_name,

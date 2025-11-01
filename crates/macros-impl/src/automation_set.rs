@@ -3,7 +3,7 @@ use quote::quote;
 use syn::{parse_quote, ExprField, Index, Member};
 
 pub fn automation_sets(max: usize) -> TokenStream {
-    (1..=max).map(automation_set).collect()
+    (0..=max).map(automation_set).collect()
 }
 
 fn automation_set(size:usize) -> TokenStream {

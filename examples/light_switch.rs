@@ -23,7 +23,7 @@ async fn main() {
     manager.zigbee.set_mqtt_options(mqttoptions);
     let button: HueSmartButton = manager.add_device("test_button".to_string()).unwrap();
     let light: Light = manager.add_device("office_light".to_string()).unwrap();
-    manager.start();
+    manager.start(());
 
     toggle_light_on_button(button.events(), light.state()).await;
 }

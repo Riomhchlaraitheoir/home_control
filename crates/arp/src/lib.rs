@@ -1,3 +1,5 @@
+#![doc= include_str!("../README.md")]
+
 use derive_more::Deref;
 use pnet::datalink::{Channel, DataLinkReceiver, DataLinkSender, NetworkInterface};
 use pnet::packet::arp::{ArpHardwareTypes, ArpOperations, ArpPacket, MutableArpPacket};
@@ -17,17 +19,18 @@ use control::{Device, ExposesSubManager};
 
 pub use pnet::util::MacAddr;
 
+/// The configuration data for a ARP network scanner
 #[derive(Debug)]
 pub struct NetworkScannerConfig {
     /// The name of the target device (to be included in logs)
     pub name: String,
     /// The name of the network interface to use
     pub interface_name: Option<String>,
-    /// the length of time to wait before deeming the device offline
+    /// the length of time to wait for an ARP reply before deeming the device offline
     pub timeout: Duration,
-    /// the length of time to wait before confirming that a device is still online
+    /// the interval between each confirmation that a device is still online
     pub confirm_interval: Duration,
-    /// the length of time to wait before scanning for an offline device
+    /// the interval between each scan for the device while it is offline
     pub scan_interval: Duration,
     /// The range of IP addresses to check
     pub ip_range: Range<Ipv4Addr>,
@@ -35,12 +38,14 @@ pub struct NetworkScannerConfig {
     pub device: MacAddr,
 }
 
+/// A manager of ARP scanners. Collects created scanners until ready to begin scanning
 #[derive(Default)]
 pub struct ArpManager {
     scanners: Vec<ArpScanner>
 }
 
 impl ArpManager {
+    /// Run all scanners
     pub fn run(self) {
         for scanner in self.scanners {
             std::thread::spawn(|| scanner.run());
@@ -48,6 +53,8 @@ impl ArpManager {
     }
 }
 
+/// The ARP scanner, separate from the ARP device, this is the part that performs the actual
+/// scanning
 #[derive(Debug, Deref)]
 pub struct ArpScanner {
     #[deref]
@@ -57,10 +64,14 @@ pub struct ArpScanner {
     local: (MacAddr, Ipv4Addr),
 }
 
+/// An ARP device, this represents a watched device and exposes some methods for getting current
+/// status and listening for changes
 pub struct ArpDevice(Receiver<Option<Ipv4Addr>>);
 
 #[bon]
 impl ArpDevice {
+    #[allow(missing_docs, reason = "This item is hidden since it's only intended for use in macros")]
+    #[doc(hidden)]
     #[builder]
     pub fn create(
         manager: &mut impl ExposesSubManager<ArpManager>,
@@ -89,12 +100,26 @@ impl ArpDevice {
         })
     }
 
-    pub fn ip_addr(&self) -> impl Stream<Item = Option<Ipv4Addr>> {
+    /// Returns the IP address of the device if it is connected to the network, and None otherwise
+    pub fn ip_addr(&self) -> Option<Ipv4Addr> {
+        *self.0.borrow()
+    }
+
+    /// Returns true if the device is currently connected to the network
+    pub fn online(&self) -> bool {
+        self.0.borrow().is_some()
+    }
+
+    /// Returns a stream of updates from the scanner, if the value is `None`, that implies that
+    /// the device is not connected to the network,. otherwise when the value is `Some(ip_addr)`
+    /// it means that the device is connected and has the given IP address
+    pub fn ip_addr_changes(&self) -> impl Stream<Item = Option<Ipv4Addr>> {
         WatchStream::from_changes(self.0.clone())
     }
 
-    pub fn online(&self) -> impl Stream<Item = bool> {
-        self.ip_addr().map(|ip| ip.is_some())
+    /// Returns a stream of changes to the online status of the device
+    pub fn online_changes(&self) -> impl Stream<Item = bool> {
+        self.ip_addr_changes().map(|ip| ip.is_some())
     }
 }
 
@@ -117,7 +142,7 @@ struct State {
 }
 
 impl ArpScanner {
-    pub fn new(config: NetworkScannerConfig) -> Result<(Self, Receiver<Option<Ipv4Addr>>), Error> {
+    fn new(config: NetworkScannerConfig) -> Result<(Self, Receiver<Option<Ipv4Addr>>), Error> {
         let interface = pnet::datalink::interfaces()
             .into_iter()
             .find(|i| config.interface_name.as_ref().is_none_or(|name| name == &i.name) && !i.is_loopback())
@@ -145,6 +170,10 @@ impl ArpScanner {
         ))
     }
 
+    /// Runs the ARP scanner on this thread, will never return.
+    ///
+    /// keeps scanning forever sleeping the thread between scans, updates are communicated to the
+    /// `ArpDevice` using a channel
     pub fn run(self) -> ! {
         debug_span!(target: "arp", "ARP scanner running for device: {}", self.name);
         let (sender, receiver) = build_eth_channel(&self.interface);

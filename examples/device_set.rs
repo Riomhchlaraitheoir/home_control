@@ -6,7 +6,7 @@ use std::time::Duration;
 use zigbee::devices::aqara::{RollerShadeDriver, SmartWallSwitchSingle, WaterLeakSensor};
 use zigbee::devices::aurora::DoubleWallSocketTypeG;
 use zigbee::devices::philips::{HueSmartButton, Light};
-use zigbee::devices::sonoff::{DoorSensor, TemperatureAndHumiditySensor, WirelessButton};
+use zigbee::devices::sonoff::{ContactSensor, TemperatureAndHumiditySensor, WirelessButton};
 
 #[allow(dead_code)]
 #[derive(DeviceSet)]
@@ -15,8 +15,8 @@ struct Devices {
     test_button: HueSmartButton,
     office_button: WirelessButton,
     upstairs_thermostat: TemperatureAndHumiditySensor,
-    back_door: DoorSensor,
-    front_door: DoorSensor,
+    back_door: ContactSensor,
+    front_door: ContactSensor,
     back_yard_light: SmartWallSwitchSingle,
     bedroom_button: HueSmartButton,
     bedroom_shades: RollerShadeDriver,

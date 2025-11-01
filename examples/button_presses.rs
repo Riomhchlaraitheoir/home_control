@@ -20,14 +20,14 @@ async fn main() {
     let mut mqttoptions = MqttOptions::new("rumqtt-sync", "localhost", 1883);
     mqttoptions.set_keep_alive(Duration::from_secs(5));
 
-    let mut worker = Manager::new();
-    worker.zigbee.set_mqtt_options(mqttoptions);
+    let mut manager = Manager::new();
+    manager.zigbee.set_mqtt_options(mqttoptions);
     let button = HueSmartButton::create()
-        .manager(&mut worker)
+        .manager(&mut manager)
         .name("test_button".to_string())
         .call()
         .unwrap();
-    worker.start();
+    manager.start(());
 
     let button_events = button.events();
     let mut event_stream = button_events.subscribe().count_presses::<5>();

@@ -22,7 +22,7 @@ impl ToTokens for Device {
         let updates = self.clone().updates();
 
         let mod_name = self.mod_name();
-        let Self { name, values } = self;
+        let Self { docs, url, name, values } = self;
         let update = Ident::new(&format!("{name}Update"), name.span());
         let fields = values.iter().map(|value| value.field(&update));
         let methods = values.iter().map(Value::method);
@@ -47,6 +47,9 @@ impl ToTokens for Device {
         };
         quote! {
         #[derive(Clone)]
+        #(#[doc = #docs])*
+        #[doc = ""]
+        #[doc = concat!("See [zigbee2mqtt.io](", #url, ") for more information")]
         pub struct #name {
             name: String,
             #publish
@@ -57,6 +60,8 @@ impl ToTokens for Device {
         #[::bon::bon]
         impl #name {
             #[builder]
+            #[allow(missing_docs, reason = "This item is hidden since it's only intended for use in macros")]
+            #[doc(hidden)]
             pub fn create(name: String, manager: &mut impl ::control::ExposesSubManager<crate::Manager>) -> Result<Self, Box<dyn ::std::error::Error>> {
                     <Self as ::control::Device>::new(manager.exclusive(), name).map_err(|err| Box::new(err) as Box<dyn ::std::error::Error>)
             }
@@ -127,8 +132,12 @@ impl Device {
                 quote! {}
             };
             let ty = value.value_type;
+            let docs = value.docs;
             quote! {
                 #attr
+                #(#[doc = #docs])*
+                ///
+                /// Will be None only if the value was not included in the received update
                 pub #name: Option<#ty>
             }
         });
@@ -163,6 +172,7 @@ impl Device {
         });
         quote! {
             #[derive(::serde::Deserialize, Clone)]
+            #[doc = concat!("An update from a ", stringify!(#name), " device")]
             pub struct #update {
                 #(#fields),*
             }
@@ -172,6 +182,7 @@ impl Device {
             }
 
             impl #name {
+                /// Returns a stream of updates as they are received from the device
                 pub fn updates(&self) -> impl ::futures::Stream<Item = #update> {
                     self.updates.subscribe()
                 }
@@ -214,7 +225,9 @@ impl Value {
     fn method(&self) -> TokenStream {
         let name = self.field_name();
         let trait_type = self.trait_type();
+        let docs = &self.docs;
         quote! {
+            #(#[doc = #docs])*
             pub fn #name(&self) -> &(impl #trait_type + Send + Sync + Clone) {
                 &self.#name
             }

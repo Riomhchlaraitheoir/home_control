@@ -1,4 +1,5 @@
 #![cfg(target_os = "linux")]
+#![doc = include_str!("../README.md")]
 
 pub mod light;
 
@@ -59,6 +60,7 @@ where
     }
 }
 
+/// an Error that may occur while communicating with wiz devices
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     /// Used when failing to serialize json
@@ -71,15 +73,28 @@ pub enum Error {
 
     /// Some socket error when communicating with a bulb
     #[error("socket {action} error: {err:?}")]
-    Socket { action: String, err: std::io::Error },
+    Socket {
+        /// The socket action that was being attempted
+        action: String,
+        /// The error that occurred
+        err: std::io::Error
+    },
 
     /// Attempting to look up or modify a light which doesn't exist
     #[error("light {light_id:?} not found")]
-    LightNotFound { light_id: Ipv4Addr },
+    LightNotFound {
+        /// The IP address of the light that was not found
+        light_id: Ipv4Addr,
+    },
 
     /// Attempting to add a light with an invalid IP
     #[error("light with ip {ip} is invalid because the IP is {reason}")]
-    InvalidIP { ip: Ipv4Addr, reason: String },
+    InvalidIP {
+        /// The invalid IP
+        ip: Ipv4Addr,
+        /// An explanation of why it is invalid
+        reason: String
+    },
 }
 
 impl Error {

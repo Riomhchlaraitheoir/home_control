@@ -40,9 +40,10 @@ pub fn run_automations<'a>(mut automations: impl AutomationSet<'a>) {
 
 /// A set of one or more automations
 ///
-/// Since the [Automation] trait is not dyn compatible, collections like [Vec] are not suitable
-/// This trait is implemented for tuples containing automations, up to a tuple size of 21
-/// If you need more automations in a set, then you can nest the tuples
+/// This trait is implemented for the following types:
+/// - any [Automation] implementor
+/// - any tuple up to 21 elements where each element implements [AutomationSet]
+/// - A `Vec<Box<dyn AutomationSet>>`
 pub trait AutomationSet<'a>: 'a {
     /// Returns all futures from automations in this set
     fn futures<'b>(&'b mut self, futures: &mut Vec<BoxFuture<'b, ()>>) where 'a:'b;

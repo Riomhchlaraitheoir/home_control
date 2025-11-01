@@ -6,12 +6,15 @@ use syn::{LitInt, LitStr, Path};
 
 #[derive(Clone, Debug)]
 pub struct Device {
+    docs: Vec<LitStr>,
+    url: LitStr,
     name: Ident,
     values: Vec<Value>,
 }
 
 #[derive(Clone, Debug)]
 struct Value {
+    docs: Vec<LitStr>,
     mode: Mode,
     attribute_name: LitStr,
     value_name: Option<Ident>,

@@ -3,6 +3,9 @@ name = "control"
 version.workspace = true
 edition.workspace = true
 
+[lints]
+workspace = true
+
 [dependencies]
 light_ranged_integers = { workspace = true }
 futures = { workspace = true }

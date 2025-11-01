@@ -2,7 +2,7 @@ use std::marker::PhantomData;
 use crate::automations::{Automation, AutomationMutAction};
 use futures::stream::FusedStream;
 use futures::{select_biased, FutureExt, StreamExt};
-use tracing::log::warn;
+use tracing::warn;
 
 /// creates an automation of the `cancel` type, the behaviour is that if a trigger occurs while
 /// the previous run is ongoing, then the previous run is canceled (at the next [poll](Future::poll) call)

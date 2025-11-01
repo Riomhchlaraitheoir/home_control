@@ -3,6 +3,9 @@ name = "zigbee"
 version.workspace = true
 edition.workspace = true
 
+[lints]
+workspace = true
+
 [dependencies]
 rumqttc = { workspace = true }
 serde = { workspace = true }

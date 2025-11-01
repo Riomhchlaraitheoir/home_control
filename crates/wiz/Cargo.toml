@@ -3,6 +3,9 @@ name = "wiz"
 version.workspace = true
 edition.workspace = true
 
+[lints]
+workspace = true
+
 [dependencies]
 tracing = { workspace = true }
 thiserror = { workspace = true }

@@ -1,3 +1,5 @@
+#![allow(dead_code, reason = "some types are not used yet, but may be as support for more devices is added")]
+
 use crate::get_request;
 use crate::publish::Publish;
 use crate::Sensor;

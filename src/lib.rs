@@ -37,7 +37,7 @@ impl Manager {
 
     pub fn start<'b>(self, automations: impl AutomationSet<'b>) {
         #[cfg(feature = "zigbee")]
-        let _worker = self.zigbee.start();
+        self.zigbee.start();
         run_automations(automations)
     }
 

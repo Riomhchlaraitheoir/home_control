@@ -1,3 +1,5 @@
+//! An internal crate for procedural macros, any public macro should be re-exported
+
 use macros_impl::{device_set, Device};
 use proc_macro::TokenStream;
 use syn::__private::ToTokens;

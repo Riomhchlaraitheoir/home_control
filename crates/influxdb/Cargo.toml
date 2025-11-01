@@ -3,6 +3,9 @@ name = "influxdb"
 version.workspace = true
 edition.workspace = true
 
+[lints]
+workspace = true
+
 [dependencies]
 influxdb = { workspace = true }
 tokio = {workspace = true}

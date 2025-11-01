@@ -3,6 +3,9 @@ name = "arp"
 version.workspace = true
 edition.workspace = true
 
+[lints]
+workspace = true
+
 [dependencies]
 pnet = { workspace = true }
 thiserror = { workspace = true }
