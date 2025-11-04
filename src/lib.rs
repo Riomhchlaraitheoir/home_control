@@ -1,9 +1,8 @@
 pub use ::control::*;
-use async_executor::Executor;
 use async_signal::{Signal, Signals};
 use control::automations::AutomationSet;
 use futures::executor::block_on;
-use futures::future::join_all;
+use futures::future::{join_all, BoxFuture};
 pub use macros::DeviceSet;
 use std::time::Duration;
 use futures::{FutureExt, StreamExt};
@@ -44,8 +43,47 @@ impl Manager {
         D::new(self)
     }
 
-    pub fn start(self, automations: &mut impl AutomationSet) {
-            let executor = Executor::new();
+    #[cfg(feature = "async-executor")]
+    pub fn start(self, automations: &mut impl AutomationSet) -> impl Future<Output = ()> {
+        use async_executor::Executor;
+        let executor = Executor::new();
+        #[cfg(feature = "zigbee")]
+        let (zigbee_jobs, zigbee_abort_handles) = block_on(self.zigbee.start());
+
+        let mut termination = Signals::new([Signal::Term, Signal::Int])
+            .expect("Failed to register signal handler");
+
+        #[cfg(feature = "arp")]
+        self.arp.run();
+
+        let mut jobs = Vec::with_capacity(automations.size());
+        automations.futures(&mut jobs);
+
+        #[allow(unused_mut, reason = "mut needed only with zigbee feature")]
+        let mut tasks = jobs
+            .into_iter()
+            .map(|job| executor.spawn(job))
+            .collect::<Vec<_>>();
+        #[cfg(feature = "zigbee")]
+        tasks.extend(zigbee_jobs.into_iter().map(|job| executor.spawn(job)));
+
+        async move {
+            termination.next().await;
+            #[cfg(feature = "zigbee")]
+            for handle in zigbee_abort_handles {
+                handle.abort();
+            }
+            let mut timeout = async_timer::new_timer(Duration::from_millis(1000)).fuse();
+            let mut tasks = join_all(tasks).fuse();
+            futures::select! {
+                _ = tasks => {}
+                _ = timeout => {}
+            }
+        }
+    }
+
+    #[cfg(feature = "custom-executor")]
+    pub fn start(self, automations: &mut impl AutomationSet) -> impl Future<Output = ()> {
             #[cfg(feature = "zigbee")]
             let (zigbee_jobs, zigbee_abort_handles) = block_on(self.zigbee.start());
 
@@ -58,14 +96,15 @@ impl Manager {
             let mut jobs = Vec::with_capacity(automations.size());
             automations.futures(&mut jobs);
 
+            #[allow(unused_mut, reason = "mut needed only with zigbee feature")]
             let mut tasks = jobs
                 .into_iter()
-                .map(|job| executor.spawn(job))
+                .map(|job| tokio::spawn(job))
                 .collect::<Vec<_>>();
             #[cfg(feature = "zigbee")]
             tasks.extend(zigbee_jobs.into_iter().map(|job| executor.spawn(job)));
 
-            block_on(async {
+            async move {
                 termination.next().await;
                 #[cfg(feature = "zigbee")]
                 for handle in zigbee_abort_handles {
@@ -77,7 +116,12 @@ impl Manager {
                     _ = tasks => {}
                     _ = timeout => {}
                 }
-            });
+            }
+    }
+
+    #[cfg(not(any(feature = "async-executor", feature = "custom-executor")))]
+    pub fn start(self, automations: &mut impl AutomationSet) -> impl Future<Output = ()> {
+        compile_error!("Please add one of the following features in order to select an execuitor: tokio, async-ececutor")
     }
 
     pub fn add_device<D: Device>(&mut self, args: D::Args) -> Result<D, D::Error>

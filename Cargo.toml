@@ -45,6 +45,7 @@ edition.workspace = true
 
 [features]
 default = []
+custom-executor = ["async-task", "control/custom"]
 
 [dependencies]
 control = { workspace = true }
@@ -53,10 +54,10 @@ wiz = { workspace = true, optional = true }
 arp = { workspace = true, optional = true }
 macros = { workspace = true }
 async-signal = { workspace = true }
-tokio = { workspace = true }
-async-executor = { workspace = true }
+async-executor = { workspace = true, optional = true }
 futures = { workspace = true }
 async-timer = { workspace = true }
+async-task = { version = "4.7.1", optional = true }
 
 [dev-dependencies]
 rumqttc = { workspace = true }
@@ -64,6 +65,7 @@ log = "0.4.28"
 simple-log = { workspace = true }
 tokio = {workspace = true}
 tokio-stream = {workspace = true}
+testing.path = "crates/testing"
 
 [[example]]
 name = "button_presses"
@@ -76,3 +78,7 @@ required-features = ["zigbee"]
 [[example]]
 name = "device_set"
 required-features = ["zigbee", "arp", "wiz"]
+
+[[test]]
+name = "simple_automation"
+required-features = ["zigbee"]

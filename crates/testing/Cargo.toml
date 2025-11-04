@@ -1,0 +1,17 @@
+[package]
+name = "testing"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+rumqttd = { version = "0.20.0", artifact = ["bin"] }
+rumqttc = { version = "0.25.0" }
+tokio = { version = "1.48.0", features = ["rt-multi-thread", "full"] }
+tokio-stream = { workspace = true }
+serde_json = "1.0.145"
+futures = "0.3.31"
+log = "0.4.28"
+bytes = "1.10.1"
+
+[lints]
+workspace = true

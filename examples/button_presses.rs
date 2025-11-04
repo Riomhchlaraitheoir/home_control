@@ -5,6 +5,7 @@ use log::Level;
 use rumqttc::MqttOptions;
 use simple_log::LogConfigBuilder;
 use std::time::Duration;
+use futures::executor::block_on;
 use control::automations::queued;
 
 #[tokio::main]
@@ -31,9 +32,9 @@ async fn main() {
     let button_events = button.events();
     let event_stream = button_events.subscribe().count_presses::<5>();
 
-    let mut auto = queued(event_stream, async |event| {
+    let mut auto = queued("test".to_string(), event_stream, async |event| {
         println!("{event:?}");
         Ok(())
     });
-    manager.start(&mut auto);
+    block_on(manager.start(&mut auto));
 }
