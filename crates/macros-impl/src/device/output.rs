@@ -228,7 +228,7 @@ impl Value {
         let docs = &self.docs;
         quote! {
             #(#[doc = #docs])*
-            pub fn #name(&self) -> &(impl #trait_type + Send + Sync + Clone) {
+            pub fn #name<'a>(&'a self) -> &'a (impl #trait_type + Send + Sync + Clone + use<>) {
                 &self.#name
             }
         }

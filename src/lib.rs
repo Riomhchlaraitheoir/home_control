@@ -1,11 +1,21 @@
-pub use ::control::*;
-use async_signal::{Signal, Signals};
-use control::automations::AutomationSet;
+#![feature(mpmc_channel)]
+
+use crate::threads::new_thread_pool;
+#[cfg(feature = "zigbee")]
 use futures::executor::block_on;
-use futures::future::{join_all, BoxFuture};
-pub use macros::DeviceSet;
+use futures::executor::block_on_stream;
+use signal_hook::consts::{SIGINT, SIGTERM};
+use signal_hook::iterator::Signals;
+use std::thread;
 use std::time::Duration;
-use futures::{FutureExt, StreamExt};
+use tracing::debug;
+
+pub mod automation;
+mod threads;
+
+use automation::Automation;
+pub use control::*;
+pub use macros::DeviceSet;
 
 #[cfg(feature = "zigbee")]
 pub mod zigbee {
@@ -43,85 +53,47 @@ impl Manager {
         D::new(self)
     }
 
-    #[cfg(feature = "async-executor")]
-    pub fn start(self, automations: &mut impl AutomationSet) -> impl Future<Output = ()> {
-        use async_executor::Executor;
-        let executor = Executor::new();
+    pub fn start<'a>(self, automations: impl IntoIterator<Item = Automation<'a>>) {
         #[cfg(feature = "zigbee")]
         let (zigbee_jobs, zigbee_abort_handles) = block_on(self.zigbee.start());
 
-        let mut termination = Signals::new([Signal::Term, Signal::Int])
-            .expect("Failed to register signal handler");
+        let mut termination =
+            Signals::new([SIGTERM, SIGINT]).expect("Failed to register signal handler");
 
         #[cfg(feature = "arp")]
         self.arp.run();
 
-        let mut jobs = Vec::with_capacity(automations.size());
-        automations.futures(&mut jobs);
+        thread::scope(|scope| {
+            let pool = new_thread_pool(scope, 10, "home-control");
+            let all_jobs =
+                futures::stream::select_all(automations.into_iter()
+                    .map(|automation| automation.0));
+            let (all_jobs, abort) = futures::stream::abortable(all_jobs);
 
-        #[allow(unused_mut, reason = "mut needed only with zigbee feature")]
-        let mut tasks = jobs
-            .into_iter()
-            .map(|job| executor.spawn(job))
-            .collect::<Vec<_>>();
-        #[cfg(feature = "zigbee")]
-        tasks.extend(zigbee_jobs.into_iter().map(|job| executor.spawn(job)));
-
-        async move {
-            termination.next().await;
             #[cfg(feature = "zigbee")]
-            for handle in zigbee_abort_handles {
-                handle.abort();
+            for (name, future) in zigbee_jobs {
+                debug!("starting thread {}", name);
+                thread::Builder::new()
+                    .name(name.to_string())
+                    .spawn_scoped(scope, move || block_on(future))
+                    .expect("Failed to spawn thread");
             }
-            let mut timeout = async_timer::new_timer(Duration::from_millis(1000)).fuse();
-            let mut tasks = join_all(tasks).fuse();
-            futures::select! {
-                _ = tasks => {}
-                _ = timeout => {}
-            }
-        }
-    }
 
-    #[cfg(feature = "custom-executor")]
-    pub fn start(self, automations: &mut impl AutomationSet) -> impl Future<Output = ()> {
-            #[cfg(feature = "zigbee")]
-            let (zigbee_jobs, zigbee_abort_handles) = block_on(self.zigbee.start());
-
-            let mut termination = Signals::new([Signal::Term, Signal::Int])
-                .expect("Failed to register signal handler");
-
-            #[cfg(feature = "arp")]
-            self.arp.run();
-
-            let mut jobs = Vec::with_capacity(automations.size());
-            automations.futures(&mut jobs);
-
-            #[allow(unused_mut, reason = "mut needed only with zigbee feature")]
-            let mut tasks = jobs
-                .into_iter()
-                .map(|job| tokio::spawn(job))
-                .collect::<Vec<_>>();
-            #[cfg(feature = "zigbee")]
-            tasks.extend(zigbee_jobs.into_iter().map(|job| executor.spawn(job)));
-
-            async move {
-                termination.next().await;
-                #[cfg(feature = "zigbee")]
-                for handle in zigbee_abort_handles {
-                    handle.abort();
+            scope.spawn(move || {
+                if termination.forever().next().is_some() {
+                    abort.abort();
+                    #[cfg(feature = "zigbee")]
+                    for handle in zigbee_abort_handles {
+                        handle.abort();
+                    }
                 }
-                let mut timeout = async_timer::new_timer(Duration::from_millis(1000)).fuse();
-                let mut tasks = join_all(tasks).fuse();
-                futures::select! {
-                    _ = tasks => {}
-                    _ = timeout => {}
-                }
-            }
-    }
+            });
 
-    #[cfg(not(any(feature = "async-executor", feature = "custom-executor")))]
-    pub fn start(self, automations: &mut impl AutomationSet) -> impl Future<Output = ()> {
-        compile_error!("Please add one of the following features in order to select an execuitor: tokio, async-ececutor")
+            for job in block_on_stream(all_jobs) {
+                pool.execute(job);
+            }
+            pool.cancel(Duration::from_secs(5));
+        })
     }
 
     pub fn add_device<D: Device>(&mut self, args: D::Args) -> Result<D, D::Error>

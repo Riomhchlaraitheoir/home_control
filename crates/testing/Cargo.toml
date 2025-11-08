@@ -11,7 +11,6 @@ tokio-stream = { workspace = true }
 serde_json = "1.0.145"
 futures = "0.3.31"
 log = "0.4.28"
-bytes = "1.10.1"
 
 [lints]
 workspace = true

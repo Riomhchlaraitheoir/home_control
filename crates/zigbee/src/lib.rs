@@ -88,7 +88,7 @@ impl Manager {
     /// spawns 2 threads
     /// - one to handle incoming updates, passing them to the relevant channels
     /// - another to handle outgoing publishes, sending them to the MQTT broker
-    pub async fn start(self) -> (Vec<BoxFuture<'static, ()>>, Vec<AbortHandle>) {
+    pub async fn start(self) -> (Vec<(&'static str, BoxFuture<'static, ()>)>, Vec<AbortHandle>) {
         let mqttoptions = self.mqtt_options.expect("no mqtt options set");
         println!("creating client");
         let (client, event_loop) = AsyncClient::new(mqttoptions, 10);
@@ -102,11 +102,13 @@ impl Manager {
         }
         let (subscribe_job, abort_subscribe) = Self::subscription_job(event_loop, subscriptions);
         let (publish_job, abort_publish) = Self::publish_job(client, self.outgoing);
-        (vec![Box::pin(subscribe_job), Box::pin(publish_job)], vec![abort_subscribe, abort_publish])
+        (vec![
+            ("zigbee-subscribe", Box::pin(subscribe_job)),
+            ("zigbee-publish", Box::pin(publish_job))
+        ], vec![abort_subscribe, abort_publish])
     }
 
     fn subscription_job(event_loop: EventLoop, subscriptions: Vec<Subscription>) -> (impl Future<Output = ()>, AbortHandle) {
-        debug!("starting subscription thread");
         let events = futures::stream::unfold(event_loop, |mut event_loop| {
             async {
                 match event_loop.poll().await {
@@ -120,6 +122,7 @@ impl Manager {
         });
         let (events, abort_handle) = futures::stream::abortable(events);
         let future = async move {
+            debug!("starting subscription thread");
             let mut events = pin!(events);
             while let Some(event) = events.next().await {
                 match event {
@@ -141,14 +144,15 @@ impl Manager {
                     }
                 }
             }
+            debug!("finishing subscription thread");
         };
         (future, abort_handle)
     }
 
     fn publish_job(client: AsyncClient, publishes: mpsc::Receiver<Publish>) -> (impl Future<Output = ()>, AbortHandle) {
-        debug!("starting publish thread");
         let (mut publishes, abort_handle) = futures::stream::abortable(ReceiverStream::new(publishes));
         let future = async move {
+            debug!("starting publish thread");
             while let Some(publish) = publishes.next().await {
                 debug!("sending publish: {publish:?}");
                 client
@@ -161,6 +165,7 @@ impl Manager {
                     .await
                     .expect("failed to publish payload")
             }
+            debug!("finishing subscription thread");
         };
         (future, abort_handle)
     }

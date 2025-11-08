@@ -5,7 +5,7 @@ zigbee_device!{
     /// A Philips Hue Smart Button
     pub HueSmartButton {
         "https://www.zigbee2mqtt.io/devices/8718699693985.html",
-        /// The button events detected byt the button
+        /// The button events detected by the button
         stream "action" => events: enum ButtonEvent {
             "press" => Press,
             "hold" => Hold,

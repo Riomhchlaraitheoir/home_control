@@ -1,12 +1,12 @@
+use control::{ButtonEvent, Sensor, ToggleValue};
+use home_control::Manager;
+use home_control::automation::Automation;
 use home_control::zigbee::devices::philips::{HueSmartButton, Light};
-use home_control::{ButtonEvent, Manager, Sensor, ToggleValue};
-use log::{debug, Level};
+use log::{Level, debug};
 use rumqttc::MqttOptions;
 use simple_log::LogConfigBuilder;
 use std::time::Duration;
-use futures::executor::block_on;
 use tokio_stream::StreamExt;
-use control::automations::{single, Automation};
 
 #[tokio::main]
 async fn main() {
@@ -25,19 +25,22 @@ async fn main() {
     manager.zigbee.set_mqtt_options(mqttoptions);
     let button: HueSmartButton = manager.add_device("test_button".to_string()).unwrap();
     let light: Light = manager.add_device("office_light".to_string()).unwrap();
-    let mut automations = toggle_light_on_button(button.events(), light.state());
-    block_on(manager.start(&mut automations));
+    let automation = toggle_light_on_button(button.events(), light.state());
+    manager.start([automation]);
 }
 
-fn toggle_light_on_button(
-    button: &impl Sensor<Item = ButtonEvent>,
-    light: &(impl ToggleValue + Send + Sync),
-) -> impl Automation {
+fn toggle_light_on_button<'a>(
+    button: &'a impl Sensor<Item = ButtonEvent>,
+    light: &'a (impl ToggleValue + Send + Sync),
+) -> Automation<'a> {
     let button_presses = button.subscribe().filter(|event| {
         debug!("received button event: {event:?}");
         *event == ButtonEvent::Press
     });
-    single("test".to_string(), button_presses, async |_| {
-        light.toggle().await.map_err(|err| format!("failed to toggle light: {err}"))
+    Automation::parallel(button_presses, async |_| {
+        light
+            .toggle()
+            .await
+            .map_err(|err| format!("failed to toggle light: {err}"))
     })
 }

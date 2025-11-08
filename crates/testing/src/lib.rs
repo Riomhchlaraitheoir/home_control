@@ -1,6 +1,5 @@
 //! A crate with utilities useful for testing
 
-use bytes::Bytes;
 use futures::StreamExt;
 use log::{debug, info, warn};
 use rumqttc::{AsyncClient, Event, Incoming, MqttOptions, QoS};
@@ -10,7 +9,6 @@ use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use std::sync::Arc;
 use std::thread::{sleep};
 use std::time::Duration;
-use futures::executor::block_on;
 use tokio::process::{Child, Command};
 use tokio::spawn;
 use tokio::sync::broadcast::Receiver;

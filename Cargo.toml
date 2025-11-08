@@ -35,7 +35,6 @@ wiz.path = "crates/wiz"
 zigbee.path = "crates/zigbee"
 arp.path = "crates/arp"
 pnet = "0.35.0"
-async-signal = "0.2.13"
 bon = "3.8.1"
 
 [package]
@@ -45,7 +44,6 @@ edition.workspace = true
 
 [features]
 default = []
-custom-executor = ["async-task", "control/custom"]
 
 [dependencies]
 control = { workspace = true }
@@ -53,11 +51,13 @@ zigbee = { workspace = true, optional = true }
 wiz = { workspace = true, optional = true }
 arp = { workspace = true, optional = true }
 macros = { workspace = true }
-async-signal = { workspace = true }
-async-executor = { workspace = true, optional = true }
+signal-hook = "0.3.18"
 futures = { workspace = true }
 async-timer = { workspace = true }
-async-task = { version = "4.7.1", optional = true }
+async-task = { version = "4.7.1" }
+pin-project = "1.1.10"
+tracing = "0.1.41"
+flume = "0.11.1"
 
 [dev-dependencies]
 rumqttc = { workspace = true }
