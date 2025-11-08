@@ -9,19 +9,19 @@ use control::ReadValue;
 use control::Sensor;
 use control::ToggleValue;
 use control::WriteValue;
-use futures::future::{AbortHandle, BoxFuture};
-use tracing::{debug, warn};
 use rumqttc::{AsyncClient, Event, EventLoop, Incoming, MqttOptions, QoS};
 use serde::Deserialize;
 use serde_json::Value;
 use std::marker::PhantomData;
-use std::pin::pin;
+use tokio::{select, spawn};
 use tokio::sync::broadcast::Sender;
 use tokio::sync::{broadcast, mpsc};
-use tokio_stream::wrappers::errors::BroadcastStreamRecvError;
-use tokio_stream::wrappers::{BroadcastStream, ReceiverStream};
 use tokio_stream::Stream;
 use tokio_stream::StreamExt;
+use tokio_stream::wrappers::errors::BroadcastStreamRecvError;
+use tokio_stream::wrappers::{BroadcastStream};
+use tokio_util::sync::CancellationToken;
+use tracing::{debug, warn};
 
 /// Definitions for all supported zigbee devices
 pub mod devices {
@@ -88,86 +88,88 @@ impl Manager {
     /// spawns 2 threads
     /// - one to handle incoming updates, passing them to the relevant channels
     /// - another to handle outgoing publishes, sending them to the MQTT broker
-    pub async fn start(self) -> (Vec<(&'static str, BoxFuture<'static, ()>)>, Vec<AbortHandle>) {
+    pub async fn start(self, token: CancellationToken) {
         let mqttoptions = self.mqtt_options.expect("no mqtt options set");
-        println!("creating client");
         let (client, event_loop) = AsyncClient::new(mqttoptions, 10);
 
-        let subscriptions = self.subscriptions;
-        for subscription in &subscriptions {
-            client
-                .subscribe(&subscription.topic, QoS::AtMostOnce)
-                .await
-                .expect("failed to start subscription")
-        }
-        let (subscribe_job, abort_subscribe) = Self::subscription_job(event_loop, subscriptions);
-        let (publish_job, abort_publish) = Self::publish_job(client, self.outgoing);
-        (vec![
-            ("zigbee-subscribe", Box::pin(subscribe_job)),
-            ("zigbee-publish", Box::pin(publish_job))
-        ], vec![abort_subscribe, abort_publish])
+        spawn(Self::subscription_job(
+            event_loop,
+            self.subscriptions.clone(),
+            token.clone()
+        ));
+        spawn(Self::publish_job(client, self.outgoing, self.subscriptions, token));
     }
 
-    fn subscription_job(event_loop: EventLoop, subscriptions: Vec<Subscription>) -> (impl Future<Output = ()>, AbortHandle) {
-        let events = futures::stream::unfold(event_loop, |mut event_loop| {
-            async {
-                match event_loop.poll().await {
-                    Ok(event) => Some((event, event_loop)),
-                    Err(err) => {
-                        warn!("Error from connection: {err}");
-                        None
-                    }
-                }
-            }
-        });
-        let (events, abort_handle) = futures::stream::abortable(events);
-        let future = async move {
-            debug!("starting subscription thread");
-            let mut events = pin!(events);
-            while let Some(event) = events.next().await {
-                match event {
-                    Event::Outgoing(_) => {}
-                    Event::Incoming(message) => {
-                        let Incoming::Publish(publish) = message else {
-                            continue;
-                        };
-                        let publish: Publish = publish.into();
-                        debug!("received publish: {publish:?}");
-                        for Subscription { sender, .. } in subscriptions
-                            .iter()
-                            .filter(|s| publish.topic.starts_with(&s.topic))
-                        {
-                            // send will only fail when there are no subscribers, continue in this
-                            // case since subscribers may join later
-                            let _ = sender.send(publish.clone());
+    async fn subscription_job(mut event_loop: EventLoop, subscriptions: Vec<Subscription>, token: CancellationToken) {
+        loop {
+            let event = select! {
+                _ = token.cancelled() => break,
+                result = event_loop.poll() => {
+                    match result {
+                        Ok(event) => event,
+                        Err(err) => {
+                            warn!("Error from connection: {err}");
+                            break;
                         }
                     }
                 }
+            };
+            match event {
+                Event::Outgoing(_) => {}
+                Event::Incoming(message) => {
+                    let Incoming::Publish(publish) = message else {
+                        continue;
+                    };
+                    let publish: Publish = publish.into();
+                    debug!("received publish: {publish:?}");
+                    for Subscription { sender, .. } in subscriptions
+                        .iter()
+                        .filter(|s| publish.topic.starts_with(&s.topic))
+                    {
+                        // send will only fail when there are no subscribers, continue in this
+                        // case since subscribers may join later
+                        let _ = sender.send(publish.clone());
+                    }
+                }
             }
-            debug!("finishing subscription thread");
-        };
-        (future, abort_handle)
+        }
     }
 
-    fn publish_job(client: AsyncClient, publishes: mpsc::Receiver<Publish>) -> (impl Future<Output = ()>, AbortHandle) {
-        let (mut publishes, abort_handle) = futures::stream::abortable(ReceiverStream::new(publishes));
-        let future = async move {
-            debug!("starting publish thread");
-            while let Some(publish) = publishes.next().await {
-                debug!("sending publish: {publish:?}");
-                client
-                    .publish(
-                        format!("zigbee2mqtt/{}", publish.topic),
-                        QoS::AtMostOnce,
-                        false,
-                        publish.raw_payload,
-                    )
-                    .await
-                    .expect("failed to publish payload")
-            }
-            debug!("finishing subscription thread");
-        };
-        (future, abort_handle)
+    async fn publish_job(
+        client: AsyncClient,
+        mut publishes: mpsc::Receiver<Publish>,
+        subscriptions: Vec<Subscription>,
+        token: CancellationToken,
+    ) {
+        debug!("creating subscriptions");
+        for subscription in subscriptions {
+            client
+                .subscribe(&subscription.topic, QoS::AtLeastOnce)
+                .await
+                .expect("failed to create subscription")
+        }
+        debug!("subscriptions created");
+        debug!("starting publish loop");
+        loop {
+            let option = select! {
+                _ = token.cancelled() => break,
+                option = publishes.recv() => option
+            };
+            let Some(publish) = option else {
+                break
+            };
+            debug!("sending publish: {publish:?}");
+            client
+                .publish(
+                    format!("zigbee2mqtt/{}", publish.topic),
+                    QoS::AtMostOnce,
+                    false,
+                    publish.raw_payload,
+                )
+                .await
+                .expect("failed to publish payload")
+        }
+        debug!("finishing subscription loop");
     }
 }
 

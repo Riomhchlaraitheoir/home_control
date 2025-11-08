@@ -18,6 +18,8 @@ use tracing::{debug, debug_span, trace};
 use control::{Device, ExposesSubManager};
 
 pub use pnet::util::MacAddr;
+use tokio::task::spawn_blocking;
+use tokio_util::sync::CancellationToken;
 
 /// The configuration data for a ARP network scanner
 #[derive(Debug)]
@@ -46,9 +48,13 @@ pub struct ArpManager {
 
 impl ArpManager {
     /// Run all scanners
-    pub fn run(self) {
-        for scanner in self.scanners {
-            std::thread::spawn(|| scanner.run());
+    pub async fn run(self, token: CancellationToken) {
+        let handles = self.scanners.into_iter().map(|scanner| {
+            spawn_blocking(|| scanner.run())
+        }).collect::<Vec<_>>();
+        token.cancelled().await;
+        for handle in handles {
+            handle.abort();
         }
     }
 }

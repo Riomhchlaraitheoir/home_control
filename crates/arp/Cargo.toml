@@ -11,6 +11,7 @@ pnet = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
 tokio-stream = { workspace = true }
+tokio-util = { workspace = true }
 tracing = { workspace = true }
 derive_more = { workspace = true }
 control.workspace = true

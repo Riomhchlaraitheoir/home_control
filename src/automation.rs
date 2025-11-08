@@ -6,11 +6,13 @@ use std::task::{Context, Poll};
 use futures::future::BoxFuture;
 use futures::{Stream};
 use futures::stream::BoxStream;
+use log::debug;
 use pin_project::pin_project;
+use tracing::warn;
 
 #[must_use = "An automation does nothing unless it is passed into Manager::start"]
 /// An Automation definition, with a trigger stream and an action
-pub struct Automation<'a>(pub(crate) BoxStream<'a, BoxFuture<'a, Result<(), String>>>);
+pub struct Automation<'a>(pub(crate) BoxStream<'a, BoxFuture<'a, ()>>);
 
 pub trait Action<Trigger>: Send + Sync + Copy {
     fn run(self, trigger: Trigger) -> impl Future<Output = Result<(), String>> + Send;
@@ -32,18 +34,19 @@ where
 }
 
 impl<'a> Automation<'a> {
-    pub fn parallel<S, A>(input: S, action: A) -> Self
+    pub fn parallel<S, A>(name: impl AsRef<str>, input: S, action: A) -> Self
     where
         S: Stream + Send + 'a,
         A: Action<S::Item> + 'a,
     {
-        let futures = JobStream::new(input, action);
+        let futures = JobStream::new(name.as_ref().to_string(), input, action);
         Automation(Box::pin(futures))
     }
 }
 
 #[pin_project]
 struct JobStream<'a, S, A> {
+    name: String,
     #[pin]
     input: S,
     action: A,
@@ -55,8 +58,9 @@ where
     S: Stream + 'a,
     A: Action<S::Item> + 'a,
 {
-    pub fn new(input: S, action: A) -> Self {
+    pub fn new(name: String, input: S, action: A) -> Self {
         JobStream {
+            name,
             input,
             action,
             _a: PhantomData,
@@ -69,14 +73,24 @@ where
     S: Stream + 'a,
     A: Action<S::Item> + 'a,
 {
-    type Item = BoxFuture<'a, Result<(), String>>;
+    type Item = BoxFuture<'a, ()>;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let this = self.project();
         let action = this.action;
         this.input.poll_next(cx).map(move |option| {
             option.map(move |trigger| {
-                Box::pin(action.run(trigger)) as BoxFuture<'a, Result<(), String>>
+                let run  = action.run(trigger);
+                let name = this.name.clone();
+                let future = async move {
+                    debug!("Automation {name} triggered");
+                    if let Err(error) = run.await {
+                        warn!("automation {name} failed: {error}");
+                    } else {
+                        debug!("Automation {name} completed");
+                    }
+                };
+                Box::pin(future) as BoxFuture<'a, ()>
             })
         })
     }

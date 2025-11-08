@@ -10,6 +10,7 @@ use simple_log::LogConfigBuilder;
 use std::thread;
 use std::thread::sleep;
 use std::time::Duration;
+use tokio::spawn;
 use testing::{mock_philips_button, mock_philips_light, start_mqtt_broker};
 use tokio_stream::StreamExt;
 
@@ -36,8 +37,7 @@ async fn test_automation() {
     let devices: Devices = manager.create().unwrap();
     // let automation =
     //     toggle_light_on_button(devices.test_button.events(), devices.test_light.state());
-    thread::scope(move |scope| {
-        scope.spawn(move || {
+        spawn(move || {
             // sleep(Duration::from_millis(50));
             // assert!(mock_light.state());
             loop {
@@ -50,12 +50,12 @@ async fn test_automation() {
             // block_on(mock_button.action("on"));
             // assert!(mock_light.state());
         });
-        scope.spawn(move || {
+        spawn(move || {
             for event in block_on_stream(devices.test_button.events().subscribe()) {
                 println!("Button event: {:?}", event);
             }
         });
-        scope.spawn(move || {
+        spawn(move || {
             let manager = manager;
             manager.start([]);
         });

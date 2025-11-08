@@ -1,17 +1,13 @@
 #![feature(mpmc_channel)]
 
-use crate::threads::new_thread_pool;
-#[cfg(feature = "zigbee")]
-use futures::executor::block_on;
 use futures::executor::block_on_stream;
-use signal_hook::consts::{SIGINT, SIGTERM};
-use signal_hook::iterator::Signals;
-use std::thread;
-use std::time::Duration;
-use tracing::debug;
+use futures::stream::select_all;
+use tokio::signal::unix::{SignalKind, signal};
+use tokio::spawn;
+use tokio_util::sync::CancellationToken;
+use tracing::{debug, info};
 
 pub mod automation;
-mod threads;
 
 use automation::Automation;
 pub use control::*;
@@ -53,47 +49,39 @@ impl Manager {
         D::new(self)
     }
 
-    pub fn start<'a>(self, automations: impl IntoIterator<Item = Automation<'a>>) {
+    pub async fn start<'a>(self, automations: impl IntoIterator<Item = Automation<'a>>) {
+        let token = CancellationToken::new();
+        debug!("Starting automations");
         #[cfg(feature = "zigbee")]
-        let (zigbee_jobs, zigbee_abort_handles) = block_on(self.zigbee.start());
-
-        let mut termination =
-            Signals::new([SIGTERM, SIGINT]).expect("Failed to register signal handler");
+        {
+            debug!("Initializing zigbee");
+            self.zigbee.start(token.clone()).await;
+            debug!("zigbee initialized");
+        };
 
         #[cfg(feature = "arp")]
-        self.arp.run();
+        {
+            debug!("Starting ARP");
+            spawn(self.arp.run(token.clone()));
+            debug!("ARP started")
+        }
 
-        thread::scope(|scope| {
-            let pool = new_thread_pool(scope, 10, "home-control");
-            let all_jobs =
-                futures::stream::select_all(automations.into_iter()
-                    .map(|automation| automation.0));
-            let (all_jobs, abort) = futures::stream::abortable(all_jobs);
+        debug!("Starting signal listener");
+        spawn(async move {
+            let mut interrupt = signal(SignalKind::interrupt()).unwrap();
+            let mut terminate = signal(SignalKind::terminate()).unwrap();
+            let termination = futures::future::join(interrupt.recv(), terminate.recv());
+            termination.await;
+            token.cancel();
+        });
 
-            #[cfg(feature = "zigbee")]
-            for (name, future) in zigbee_jobs {
-                debug!("starting thread {}", name);
-                thread::Builder::new()
-                    .name(name.to_string())
-                    .spawn_scoped(scope, move || block_on(future))
-                    .expect("Failed to spawn thread");
+        async_scoped::TokioScope::scope_and_block(move |scope| {
+            info!("Starting main automation loop");
+            for job in block_on_stream(select_all(automations.into_iter().map(|automation| automation.0))) {
+                info!("Job started");
+                scope.spawn(job)
             }
-
-            scope.spawn(move || {
-                if termination.forever().next().is_some() {
-                    abort.abort();
-                    #[cfg(feature = "zigbee")]
-                    for handle in zigbee_abort_handles {
-                        handle.abort();
-                    }
-                }
-            });
-
-            for job in block_on_stream(all_jobs) {
-                pool.execute(job);
-            }
-            pool.cancel(Duration::from_secs(5));
-        })
+        });
     }
 
     pub fn add_device<D: Device>(&mut self, args: D::Args) -> Result<D, D::Error>

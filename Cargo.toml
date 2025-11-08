@@ -36,6 +36,7 @@ zigbee.path = "crates/zigbee"
 arp.path = "crates/arp"
 pnet = "0.35.0"
 bon = "3.8.1"
+tokio-util = "0.7.17"
 
 [package]
 name = "home_control"
@@ -44,6 +45,7 @@ edition.workspace = true
 
 [features]
 default = []
+log = ["tracing/log"]
 
 [dependencies]
 control = { workspace = true }
@@ -51,13 +53,15 @@ zigbee = { workspace = true, optional = true }
 wiz = { workspace = true, optional = true }
 arp = { workspace = true, optional = true }
 macros = { workspace = true }
-signal-hook = "0.3.18"
 futures = { workspace = true }
-async-timer = { workspace = true }
 async-task = { version = "4.7.1" }
 pin-project = "1.1.10"
 tracing = "0.1.41"
 flume = "0.11.1"
+log = "0.4.28"
+tokio = { version = "1.48.0", features = ["full"] }
+tokio-util = "0.7.17"
+async-scoped = { version = "0.9.0", features = ["use-tokio"] }
 
 [dev-dependencies]
 rumqttc = { workspace = true }
