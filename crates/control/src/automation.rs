@@ -3,18 +3,21 @@
 use std::marker::PhantomData;
 use std::pin::Pin;
 use std::task::{Context, Poll};
-use futures::future::BoxFuture;
+use futures::future::{BoxFuture};
 use futures::{Stream};
 use futures::stream::BoxStream;
-use log::debug;
 use pin_project::pin_project;
-use tracing::warn;
+use tracing::{debug, warn, Instrument};
 
 #[must_use = "An automation does nothing unless it is passed into Manager::start"]
 /// An Automation definition, with a trigger stream and an action
 pub struct Automation<'a>(pub(crate) BoxStream<'a, BoxFuture<'a, ()>>);
 
+/// An Automation action, to be run each time the automation triggers, is already implemented for:
+///
+/// `Fn(Trigger) -> impl Future<Output=Result<(), String>> + Send`
 pub trait Action<Trigger>: Send + Sync + Copy {
+    /// Run this action
     fn run(self, trigger: Trigger) -> impl Future<Output = Result<(), String>> + Send;
 }
 
@@ -34,7 +37,12 @@ where
 }
 
 impl<'a> Automation<'a> {
-    pub fn parallel<S, A>(name: impl AsRef<str>, input: S, action: A) -> Self
+    /// Create a new automation
+    ///
+    /// * `name` is the automation's name, used mostly for tracing
+    /// * `input` is the input stream to trigger this automation
+    /// * `action` is the action to run for each trigger
+    pub fn new<S, A>(name: impl AsRef<str>, input: S, action: A) -> Self
     where
         S: Stream + Send + 'a,
         A: Action<S::Item> + 'a,
@@ -90,7 +98,7 @@ where
                         debug!("Automation {name} completed");
                     }
                 };
-                Box::pin(future) as BoxFuture<'a, ()>
+                Box::pin(future.instrument(tracing::info_span!("automation_run", name = this.name.clone()))) as BoxFuture<'a, ()>
             })
         })
     }

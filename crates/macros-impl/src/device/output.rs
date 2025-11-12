@@ -62,17 +62,16 @@ impl ToTokens for Device {
             #[builder]
             #[allow(missing_docs, reason = "This item is hidden since it's only intended for use in macros")]
             #[doc(hidden)]
-            pub fn create(name: String, manager: &mut impl ::control::ExposesSubManager<crate::Manager>) -> Result<Self, Box<dyn ::std::error::Error>> {
-                    <Self as ::control::Device>::new(manager.exclusive(), name).map_err(|err| Box::new(err) as Box<dyn ::std::error::Error>)
+            pub async fn create(name: String, manager: &mut crate::Manager) -> Result<Self, anyhow::Error> {
+                    <Self as ::control::device::Device>::new(manager, name).await
             }
         }
 
-            impl ::control::Device for #name {
+            impl ::control::device::Device for #name {
                 type Args = String;
                 type Manager = crate::Manager;
-                type Error = ::std::convert::Infallible;
 
-                fn new(manager: &mut crate::Manager, name: String) -> Result<Self, ::std::convert::Infallible> {
+                async fn new(manager: &mut crate::Manager, name: String) -> Result<Self, anyhow::Error> {
                     #define_publish
                     #define_updates
                     Ok(Self {
@@ -299,25 +298,25 @@ impl Value {
         let value = &self.value_type;
         match self.mode {
             Mode::Stream => quote! {
-                ::control::Sensor<Item = #value>
+                ::control::Sensor<Item = #value> + Sync
             },
             Mode::StreamGet => quote! {
-                ::control::ReadValue<Item = #value>
+                ::control::Sensor<Item = #value> + ::control::ReadValue<Item = #value> + Sync
             },
             Mode::Set => quote! {
-                ::control::WriteValue<Item = #value>
+                ::control::WriteValue<Item = #value> + Sync
             },
             Mode::StreamGetSet => quote! {
-                ::control::ReadValue<Item = #value> + ::control::WriteValue<Item = #value>
+                ::control::Sensor<Item = #value> + ::control::ReadValue<Item = #value> + ::control::WriteValue<Item = #value> + Sync
             },
             Mode::SetToggle => quote! {
-                ::control::ToggleValue<Item = #value>
+                ::control::ToggleValue<Item = #value> + Sync
             },
             Mode::StreamGetSetToggle => quote! {
-                ::control::ReadValue<Item = #value> + ::control::ToggleValue<Item = #value>
+                ::control::Sensor<Item = #value> + ::control::ReadValue<Item = #value> + ::control::ToggleValue<Item = #value> + Sync
             },
             Mode::StreamSet => quote! {
-                ::control::Sensor<Item = #value> + ::control::WriteValue<Item = #value>
+                ::control::Sensor<Item = #value> + ::control::WriteValue<Item = #value> + Sync
             },
         }
     }

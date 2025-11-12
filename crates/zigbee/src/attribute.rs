@@ -14,7 +14,8 @@ use std::convert::identity;
 use std::marker::PhantomData;
 use tokio::sync::mpsc::Sender;
 use tokio_stream::StreamExt;
-use control::Error;
+use anyhow::Error;
+use control::InputStreamClosed;
 
 #[derive(Clone)]
 pub struct SubscribeAttr<Update, Item> {
@@ -229,7 +230,7 @@ where
             ).unwrap_or_else(|err| panic!("failed to publish: {err}"));
 
             let (_, value) = join(request, response).await;
-            value.ok_or(Error::InputStreamClosed)
+            value.ok_or(Error::new(InputStreamClosed))
         }))
     }
 }

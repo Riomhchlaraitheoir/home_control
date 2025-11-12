@@ -13,6 +13,7 @@ use rumqttc::{AsyncClient, Event, EventLoop, Incoming, MqttOptions, QoS};
 use serde::Deserialize;
 use serde_json::Value;
 use std::marker::PhantomData;
+use bon::bon;
 use tokio::{select, spawn};
 use tokio::sync::broadcast::Sender;
 use tokio::sync::{broadcast, mpsc};
@@ -22,6 +23,7 @@ use tokio_stream::wrappers::errors::BroadcastStreamRecvError;
 use tokio_stream::wrappers::{BroadcastStream};
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, warn};
+use control::manager::DeviceManager;
 
 /// Definitions for all supported zigbee devices
 pub mod devices {
@@ -37,35 +39,45 @@ pub mod devices {
 
 /// sets up the zigbee environment, defining MQTT connection parameters and devices
 pub struct Manager {
-    mqtt_options: Option<MqttOptions>,
+    mqtt_options: MqttOptions,
     subscriptions: Vec<Subscription>,
     publishes: mpsc::Sender<Publish>,
     outgoing: mpsc::Receiver<Publish>,
 }
 
-impl Default for Manager {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
+#[bon]
 impl Manager {
     /// Create a new manager
-    pub fn new() -> Self {
+    #[builder]
+    pub fn new(
+        /// The MQTT options used to establish a connection
+        mqtt_options: MqttOptions
+    ) -> Self {
         let (publishes, outgoing) = mpsc::channel::<Publish>(100);
         Self {
-            mqtt_options: None,
+            mqtt_options,
             subscriptions: vec![],
             publishes,
             outgoing,
         }
     }
+}
 
-    /// Define the MQTT connection parameters
-    pub fn set_mqtt_options(&mut self, options: MqttOptions) {
-        self.mqtt_options = Some(options)
+impl DeviceManager for Manager {
+    fn start(self: Box<Self>, token: CancellationToken) {
+        let mqttoptions = self.mqtt_options;
+        let (client, event_loop) = AsyncClient::new(mqttoptions, 10);
+
+        spawn(Self::subscription_job(
+            event_loop,
+            self.subscriptions.clone(),
+            token.clone()
+        ));
+        spawn(Self::publish_job(client, self.outgoing, self.subscriptions, token));
     }
+}
 
+impl Manager {
     pub(crate) fn subscribe<T>(&mut self, topic: String) -> Updates<T>
     where
         T: for<'de> Deserialize<'de>,
@@ -83,21 +95,6 @@ impl Manager {
 
     pub(crate) fn outgoing_publishes(&self) -> mpsc::Sender<Publish> {
         self.publishes.clone()
-    }
-
-    /// spawns 2 threads
-    /// - one to handle incoming updates, passing them to the relevant channels
-    /// - another to handle outgoing publishes, sending them to the MQTT broker
-    pub async fn start(self, token: CancellationToken) {
-        let mqttoptions = self.mqtt_options.expect("no mqtt options set");
-        let (client, event_loop) = AsyncClient::new(mqttoptions, 10);
-
-        spawn(Self::subscription_job(
-            event_loop,
-            self.subscriptions.clone(),
-            token.clone()
-        ));
-        spawn(Self::publish_job(client, self.outgoing, self.subscriptions, token));
     }
 
     async fn subscription_job(mut event_loop: EventLoop, subscriptions: Vec<Subscription>, token: CancellationToken) {

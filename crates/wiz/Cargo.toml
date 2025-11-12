@@ -14,6 +14,8 @@ futures = { workspace = true }
 light_ranged_integers = { workspace = true }
 control.workspace = true
 bon = { workspace = true }
+sync-cell = { workspace = true }
+anyhow = "1.0.100"
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["full"] }

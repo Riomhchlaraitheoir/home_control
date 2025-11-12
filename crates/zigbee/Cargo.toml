@@ -20,3 +20,4 @@ macros = { workspace = true }
 light_ranged_integers = { workspace = true }
 futures = { workspace = true }
 bon = { workspace = true }
+anyhow = "1.0.100"

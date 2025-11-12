@@ -1,6 +1,6 @@
 //! An internal crate for procedural macros, any public macro should be re-exported
 
-use macros_impl::{device_set, Device};
+use macros_impl::Device;
 use proc_macro::TokenStream;
 use syn::__private::ToTokens;
 use syn::{parse_macro_input, DeriveInput, LitInt};
@@ -14,9 +14,9 @@ pub fn zigbee_device(tokens: TokenStream) -> TokenStream {
 
 /// a public derive macro for deriving home_control::DeviceSet
 #[proc_macro_derive(DeviceSet, attributes(device))]
-pub fn device_set_macro(tokens: TokenStream) -> TokenStream {
+pub fn device_set(tokens: TokenStream) -> TokenStream {
     let input = parse_macro_input!(tokens as DeriveInput);
-    device_set(input).into()
+    macros_impl::device_set(input).into()
 }
 
 /// an internal helper macro for implementing AutomationSet for tuples

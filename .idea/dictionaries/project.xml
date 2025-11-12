@@ -2,7 +2,9 @@
   <dictionary name="project">
     <words>
       <w>aqara</w>
+      <w>gluetun</w>
       <w>reqwest</w>
+      <w>sabnzbd</w>
     </words>
   </dictionary>
 </component>

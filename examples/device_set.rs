@@ -1,6 +1,7 @@
-use home_control::Manager;
+use control::manager::Manager;
 use home_control::arp::{ArpDevice, MacAddr};
 use macros::DeviceSet;
+use rumqttc::MqttOptions;
 use std::net::Ipv4Addr;
 use std::time::Duration;
 use zigbee::devices::aqara::{RollerShadeDriver, SmartWallSwitchSingle, WaterLeakSensor};
@@ -52,7 +53,15 @@ struct Devices {
     dylan_phone: ArpDevice,
 }
 
-fn main() {
-    let mut manager = Manager::new();
-    let _devices: Devices = manager.create().expect("failed to create devices");
+#[tokio::main]
+async fn main() {
+    let mut manager = Manager::builder()
+        .add_device_manager(
+            zigbee::Manager::builder()
+                .mqtt_options(MqttOptions::new("test", "localhost", 1883))
+                .build(),
+        )
+        .add_device_manager(arp::ArpManager::new())
+        .build();
+    let _devices: Devices = manager.create().await.expect("failed to create devices");
 }

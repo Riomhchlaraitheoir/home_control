@@ -11,15 +11,17 @@ use std::thread::sleep;
 use std::time::{Duration, Instant};
 use bon::bon;
 use futures::{Stream, StreamExt};
-use thiserror::Error;
 use tokio::sync::watch::{Receiver, Sender, channel};
 use tokio_stream::wrappers::WatchStream;
 use tracing::{debug, debug_span, trace};
-use control::{Device, ExposesSubManager};
 
 pub use pnet::util::MacAddr;
+use thiserror::Error;
+use tokio::spawn;
 use tokio::task::spawn_blocking;
 use tokio_util::sync::CancellationToken;
+use control::device::Device;
+use control::manager::DeviceManager;
 
 /// The configuration data for a ARP network scanner
 #[derive(Debug)]
@@ -46,7 +48,18 @@ pub struct ArpManager {
     scanners: Vec<ArpScanner>
 }
 
+impl DeviceManager for ArpManager {
+    fn start(self: Box<Self>, token: CancellationToken) {
+        spawn(self.run(token));
+    }
+}
+
 impl ArpManager {
+    /// Create a new manager
+    pub fn new() -> Self {
+        Self::default()
+    }
+
     /// Run all scanners
     pub async fn run(self, token: CancellationToken) {
         let handles = self.scanners.into_iter().map(|scanner| {
@@ -79,8 +92,8 @@ impl ArpDevice {
     #[allow(missing_docs, reason = "This item is hidden since it's only intended for use in macros")]
     #[doc(hidden)]
     #[builder]
-    pub fn create(
-        manager: &mut impl ExposesSubManager<ArpManager>,
+    pub async fn create(
+        manager: &mut ArpManager,
         name: String,
         /// The name of the network interface to use
         interface_name: Option<String>,
@@ -94,8 +107,8 @@ impl ArpDevice {
         ip_range: Range<Ipv4Addr>,
         /// The device to scan for
         device: MacAddr,
-    ) -> Result<Self, Error> {
-        Self::new(manager.exclusive(), NetworkScannerConfig {
+    ) -> anyhow::Result<Self> {
+        Self::new(manager, NetworkScannerConfig {
             name,
             interface_name,
             timeout,
@@ -103,7 +116,7 @@ impl ArpDevice {
             scan_interval,
             ip_range,
             device,
-        })
+        }).await
     }
 
     /// Returns the IP address of the device if it is connected to the network, and None otherwise
@@ -132,9 +145,8 @@ impl ArpDevice {
 impl Device for ArpDevice {
     type Args = NetworkScannerConfig;
     type Manager = ArpManager;
-    type Error = Error;
 
-    fn new(manager: &mut Self::Manager, config: NetworkScannerConfig) -> Result<Self, Error> {
+    async fn new(manager: &mut Self::Manager, config: NetworkScannerConfig) -> anyhow::Result<Self> {
         let (scanner, receiver) = ArpScanner::new(config)?;
         manager.scanners.push(scanner);
         Ok(ArpDevice(receiver))

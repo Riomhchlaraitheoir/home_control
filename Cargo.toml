@@ -8,6 +8,10 @@ edition = "2024"
 
 [workspace.lints.rust]
 missing_docs = "warn"
+async_fn_in_trait = "allow"
+
+[workspace.lints.clippy]
+#missing_errors_doc = "warn"
 
 [workspace.dependencies]
 rumqttc = "0.25.0"
@@ -37,6 +41,15 @@ arp.path = "crates/arp"
 pnet = "0.35.0"
 bon = "3.8.1"
 tokio-util = "0.7.17"
+async-scoped = "0.9.0"
+async-task = "4.7.1"
+convert_case = "0.9.0"
+flume = "0.11.1"
+log = "0.4.28"
+pin-project = "1.1.10"
+rumqttd = "0.20.0"
+sync-cell = "0.2.0"
+testing = { path = "crates/testing" }
 
 [package]
 name = "home_control"
@@ -54,22 +67,23 @@ wiz = { workspace = true, optional = true }
 arp = { workspace = true, optional = true }
 macros = { workspace = true }
 futures = { workspace = true }
-async-task = { version = "4.7.1" }
-pin-project = "1.1.10"
-tracing = "0.1.41"
-flume = "0.11.1"
-log = "0.4.28"
-tokio = { version = "1.48.0", features = ["full"] }
-tokio-util = "0.7.17"
-async-scoped = { version = "0.9.0", features = ["use-tokio"] }
+async-task = { workspace = true }
+pin-project = { workspace = true }
+tracing = { workspace = true }
+flume = { workspace = true }
+log = { workspace = true }
+tokio = { workspace = true, features = ["full"] }
+tokio-util = { workspace = true }
+async-scoped = { workspace = true, features = ["use-tokio"] }
+light_ranged_integers = { workspace = true }
 
 [dev-dependencies]
 rumqttc = { workspace = true }
-log = "0.4.28"
+log = { workspace = true }
 simple-log = { workspace = true }
-tokio = {workspace = true}
-tokio-stream = {workspace = true}
-testing.path = "crates/testing"
+tokio = { workspace = true }
+tokio-stream = { workspace = true }
+testing = { workspace = true }
 
 [[example]]
 name = "button_presses"

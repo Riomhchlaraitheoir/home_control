@@ -12,8 +12,13 @@ futures = { workspace = true }
 async-timer = { workspace = true }
 macros = { workspace = true }
 thiserror = { workspace = true }
+anyhow = "1.0.100"
 tracing = { workspace = true }
-pin-project = "1.1.10"
+pin-project = { workspace = true }
+bon = "3.8.1"
+tokio = { workspace = true}
+tokio-util = { workspace = true}
+async-scoped = { workspace = true}
 
 [features]
 custom = []

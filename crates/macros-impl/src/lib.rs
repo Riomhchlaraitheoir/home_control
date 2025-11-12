@@ -8,6 +8,7 @@ pub use crate::device::Device;
 mod device;
 mod device_set;
 mod automation_set;
+// mod tagged;
 
 pub fn device(input: Device) -> TokenStream {
     quote! { #input }
@@ -15,3 +16,4 @@ pub fn device(input: Device) -> TokenStream {
 
 pub use device_set::device_set;
 pub use automation_set::automation_sets;
+// pub use tagged::tagged;

@@ -37,14 +37,15 @@ pub fn device_set(input: DeriveInput) -> TokenStream {
         let ty = field.ty;
         quote! {
             #member: #ty::create()
-                .manager(manager)
+                .manager(manager.device_manager()?)
                 #(#args)*
-                .call()?
+                .call()
+                .await?
         }
     });
     quote! {
-        impl ::home_control::DeviceSet for #name {
-            fn new(manager: &mut ::home_control::Manager) -> Result<Self, Box<dyn ::std::error::Error>> {
+        impl ::home_control::device::DeviceSet for #name {
+            async fn new(manager: &mut ::home_control::manager::Manager) -> Result<Self, ::home_control::device::CreateDeviceError> {
                 Ok(Self {
                     #(#fields),*
                 })

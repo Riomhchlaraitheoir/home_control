@@ -1,18 +1,16 @@
 use control::{ButtonEvent, Sensor, ToggleValue};
-use futures::executor::{block_on, block_on_stream};
-use home_control::Manager;
 use home_control::automation::Automation;
 use home_control::zigbee::devices::philips::{HueSmartButton, Light};
 use log::{Level, debug};
 use macros::DeviceSet;
 use rumqttc::MqttOptions;
 use simple_log::LogConfigBuilder;
-use std::thread;
-use std::thread::sleep;
 use std::time::Duration;
-use tokio::spawn;
+use async_scoped::TokioScope;
+use tokio::time::sleep;
 use testing::{mock_philips_button, mock_philips_light, start_mqtt_broker};
 use tokio_stream::StreamExt;
+use control::manager::Manager;
 
 #[tokio::test]
 async fn test_automation() {
@@ -32,32 +30,26 @@ async fn test_automation() {
     let mut mqttoptions = MqttOptions::new("rumqtt-sync", "localhost", 1883);
     mqttoptions.set_keep_alive(Duration::from_secs(5));
 
-    let mut manager = Manager::new();
-    manager.zigbee.set_mqtt_options(mqttoptions);
-    let devices: Devices = manager.create().unwrap();
-    // let automation =
-    //     toggle_light_on_button(devices.test_button.events(), devices.test_light.state());
-        spawn(move || {
-            // sleep(Duration::from_millis(50));
-            // assert!(mock_light.state());
-            loop {
-                block_on(mock_button.action("off"));
-                sleep(Duration::from_secs(2));
-                block_on(mock_button.action("off"));
-                sleep(Duration::from_secs(2));
-            }
-            // assert!(!mock_light.state());
-            // block_on(mock_button.action("on"));
-            // assert!(mock_light.state());
+    let mut manager = Manager::builder()
+        .add_device_manager(zigbee::Manager::builder()
+            .mqtt_options(mqttoptions)
+            .build())
+        .build();
+    let devices: Devices = manager.create().await.unwrap();
+    let automation =
+        toggle_light_on_button(devices.test_button.events(), devices.test_light.state());
+    TokioScope::scope_and_block(|scope| {
+        scope.spawn(async move {
+            sleep(Duration::from_millis(50)).await;
+            assert!(mock_light.state());
+            mock_button.action("off").await;
+            assert!(!mock_light.state());
+            mock_button.action("on").await;
+            assert!(mock_light.state());
         });
-        spawn(move || {
-            for event in block_on_stream(devices.test_button.events().subscribe()) {
-                println!("Button event: {:?}", event);
-            }
-        });
-        spawn(move || {
+        scope.spawn(async move {
             let manager = manager;
-            manager.start([]);
+            manager.start([automation]).await;
         });
     });
 }
@@ -76,7 +68,7 @@ fn toggle_light_on_button<'a>(
         debug!("received button event: {event:?}");
         *event == ButtonEvent::Press
     });
-    Automation::parallel(button_presses, async |_| {
+    Automation::new("test", button_presses, async |_| {
         light
             .toggle()
             .await
