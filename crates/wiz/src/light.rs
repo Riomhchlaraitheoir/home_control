@@ -4,10 +4,11 @@ use crate::{udp_request, Error, Response};
 use bon::bon;
 use control::device::Device;
 use light_ranged_integers::{RangedU16, RangedU8};
-use serde::Deserialize;
+use serde::{Deserialize, Deserializer};
 use serde_json::json;
 use std::net::Ipv4Addr;
 use std::sync::Mutex;
+use serde::de::Error as _;
 
 /// A Wiz Light
 #[derive(Debug)]
@@ -97,10 +98,27 @@ pub struct State {
     /// true if the light is on
     pub state: bool,
     /// The colour temperature of the light
-    pub temp: RangedU16<2700, 6500>,
+    #[serde(deserialize_with = "deserialize_temp")]
+    pub temp: Option<RangedU16<1000, 12000>>,
     /// The brightness of the light as a percentage
     #[serde(rename = "dimming")]
     pub brightness: RangedU8<0, 100>,
+}
+
+fn deserialize_temp<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Option<RangedU16<1000, 12000>>, D::Error> {
+    let value: u16 = <u16>::deserialize(deserializer)?;
+    if value == 0 {
+        return Ok(None)
+    }
+    if let Some(r) = RangedU16::<1000, 12000>::new_try(value)
+    {
+        Ok(Some(r))
+    } else {
+        Err(D::Error::invalid_value(
+            serde::de::Unexpected::Other("int"),
+            &format!("Value {} is not in the desired range [{},{}]", value, 1000, 12000).as_ref()
+        ))
+    }
 }
 
 /// A simple response indicating success or failure

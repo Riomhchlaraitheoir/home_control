@@ -3925,6 +3925,7 @@ dependencies = [
  "sync-cell",
  "thiserror 2.0.17",
  "tokio",
+ "tracing",
 ]
 
 [[package]]

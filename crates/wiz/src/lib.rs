@@ -6,7 +6,7 @@ pub mod light;
 use serde::{Deserialize, Serialize};
 use std::fmt::Debug;
 use std::net::{Ipv4Addr, UdpSocket};
-
+use tracing::debug;
 pub use light::Light;
 
 #[derive(Debug, Clone, Deserialize)]
@@ -19,10 +19,11 @@ struct Response<T> {
 
 async fn udp_request<Request, Data>(addr: Ipv4Addr, msg: Request) -> Result<Response<Data>, Error>
 where
-    Request: Serialize,
+    Request: Serialize + Debug,
     for<'de> Data: Deserialize<'de>,
 {
     // dump the control message to string
+    debug!("sending request to {addr}: {msg:?}");
     let msg = match serde_json::to_vec(&msg) {
         Ok(v) => v,
         Err(e) => return Err(Error::JsonSerialize(e)),
@@ -54,6 +55,8 @@ where
     };
 
     // create some JSON object from the string
+    debug!("received response from {addr}: {}", String::from_utf8(Vec::from(&buffer[..bytes]))
+        .unwrap_or_else(|_| "failed to decode".to_string()));
     match serde_json::from_slice(&buffer[..bytes]) {
         Ok(v) => Ok(v),
         Err(e) => Err(Error::JsonSerialize(e)),
