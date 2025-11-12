@@ -1,6 +1,3 @@
-#![feature(mpmc_channel)]
-
-
 pub use control::*;
 pub use light_ranged_integers;
 pub use macros::DeviceSet;

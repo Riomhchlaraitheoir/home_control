@@ -1,4 +1,3 @@
-#![feature(push_mut)]
 #![doc = include_str!("../README.md")]
 
 mod attribute;
