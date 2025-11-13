@@ -3,16 +3,19 @@
 use crate::automation::Automation;
 use crate::device::{CreateDeviceError, Device, DeviceSet};
 use async_scoped::TokioScope;
-use bon::{bon};
+use bon::bon;
 use futures::executor::block_on_stream;
+use futures::future::ready;
 use futures::stream::select_all;
+use futures::{FutureExt, StreamExt};
 use std::any::Any;
 use std::ops::{Deref, DerefMut};
+use std::panic::AssertUnwindSafe;
 use thiserror::Error;
-use tokio::signal::unix::{SignalKind, signal};
+use tokio::signal::unix::{signal, SignalKind};
 use tokio::spawn;
 use tokio_util::sync::CancellationToken;
-use tracing::{debug, info};
+use tracing::{debug, error, info, info_span, Instrument};
 
 /// Manager is the overall manager of the automation system where all devices and automations are
 /// managed
@@ -79,30 +82,50 @@ impl Manager {
     /// This is the main entry point for the program and should be called after all devices and
     /// automations have been set up
     pub async fn start<'a>(self, automations: impl IntoIterator<Item = Automation<'a>>) {
-        let token = CancellationToken::new();
-        debug!("Starting automations");
-        for manager in self.device_managers {
-            manager.start(token.clone());
-        }
-
-        debug!("Starting signal listener");
-        spawn(async move {
-            let mut interrupt = signal(SignalKind::interrupt()).unwrap();
-            let mut terminate = signal(SignalKind::terminate()).unwrap();
-            let termination = futures::future::join(interrupt.recv(), terminate.recv());
-            termination.await;
-            token.cancel();
-        });
-
-        TokioScope::scope_and_block(move |scope| {
-            info!("Starting main automation loop");
-            for job in block_on_stream(select_all(
-                automations.into_iter().map(|automation| automation.0),
-            )) {
-                info!("Job started");
-                scope.spawn(job)
+        async {
+            let token = CancellationToken::new();
+            debug!("Starting automations");
+            for manager in self.device_managers {
+                manager.start(token.clone());
             }
-        });
+
+            debug!("Starting signal listener");
+            spawn(async move {
+                let mut interrupt = signal(SignalKind::interrupt()).unwrap();
+                let mut terminate = signal(SignalKind::terminate()).unwrap();
+                let termination = futures::future::join(interrupt.recv(), terminate.recv());
+                termination.await;
+                token.cancel();
+            });
+
+            TokioScope::scope_and_block(move |scope| {
+                info!("Starting main automation loop");
+                let all_jobs = select_all(
+                    automations.into_iter().map(|automation| {
+                        let name = automation.name;
+                        AssertUnwindSafe(automation.stream).catch_unwind().filter_map(move |result| {
+                            let name = name.clone();
+                            let option = match result {
+                                Ok(job) => Some(job),
+                                Err(panic) => {
+                                    error!(automation = name, "Automation trigger panicked: {panic:?}");
+                                    None
+                                }
+                            };
+                            ready(option)
+                        })
+                    }),
+                );
+                for (name, job) in block_on_stream(all_jobs) {
+                    info!("Job started");
+                    scope.spawn(async move {
+                        if let Err(panic) = AssertUnwindSafe(job).catch_unwind().await {
+                            error!(automation = name, "Automation panicked: {:?}", panic);
+                        }
+                    })
+                }
+            });
+        }.instrument(info_span!("automation_runner")).await
     }
 }
 
