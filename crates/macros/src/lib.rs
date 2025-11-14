@@ -16,12 +16,19 @@ pub fn zigbee_device(tokens: TokenStream) -> TokenStream {
 #[proc_macro_derive(DeviceSet, attributes(device))]
 pub fn device_set(tokens: TokenStream) -> TokenStream {
     let input = parse_macro_input!(tokens as DeriveInput);
-    macros_impl::device_set(input).into()
+    match macros_impl::device_set(input) {
+        Ok(tokens) => tokens.into(),
+        Err(err) => err.to_compile_error().into(),
+    }
 }
 
 /// an internal helper macro for implementing AutomationSet for tuples
 #[proc_macro]
 pub fn automation_sets(tokens: TokenStream) -> TokenStream {
     let input = parse_macro_input!(tokens as LitInt);
-    macros_impl::automation_sets(input.base10_parse().expect("failed to parse literal")).into()
+    let input = match input.base10_parse() {
+        Ok(value) => value,
+        Err(err) => return err.to_compile_error().into(),
+    };
+    macros_impl::automation_sets(input).into()
 }

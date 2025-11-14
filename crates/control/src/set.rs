@@ -1,5 +1,5 @@
 use crate::{ToggleValue, WriteValue};
-use futures::future::join_all;
+use futures::future::{join_all, BoxFuture};
 use futures::FutureExt;
 use anyhow::Result;
 
@@ -20,8 +20,8 @@ impl<'a, T: Clone> ToggleSet<'a, T> {
 impl<T: Clone> WriteValue for ToggleSet<'_, T> {
     type Item = T;
 
-    fn set(&self, value: Self::Item) -> Box<dyn Future<Output = Result<()>> + Unpin + Send + '_> {
-        Box::new(join_all(
+    fn set(&self, value: Self::Item) -> BoxFuture<'_, Result<()>> {
+        Box::pin(join_all(
             self.switches.iter().map(|switch| switch.set(value.clone())),
         ).map(|_| Ok(())))
     }
@@ -29,8 +29,8 @@ impl<T: Clone> WriteValue for ToggleSet<'_, T> {
 
 
 impl<T: Clone> ToggleValue for ToggleSet<'_, T> {
-    fn toggle(&self) -> Box<dyn Future<Output=Result<()>> + Unpin + Send + '_> {
-        Box::new(join_all(
+    fn toggle(&self) -> BoxFuture<'_, Result<()>> {
+        Box::pin(join_all(
             self.switches.iter().map(|switch| switch.toggle()),
         ).map(|results| results.into_iter().collect()))
     }
@@ -54,8 +54,8 @@ impl<'a, T: Clone> WriteSet<'a, T> {
 impl<T: Clone> WriteValue for WriteSet<'_, T> {
     type Item = T;
 
-    fn set(&self, value: Self::Item) -> Box<dyn Future<Output = Result<()>> + Unpin + Send + '_> {
-        Box::new(join_all(
+    fn set(&self, value: Self::Item) -> BoxFuture<'_, Result<()>> {
+        Box::pin(join_all(
             self.switches.iter().map(|switch| switch.set(value.clone())),
         ).map(|_| Ok(())))
     }

@@ -1,49 +1,55 @@
 use proc_macro2::{Ident, TokenStream};
 use quote::quote;
 use syn::parse::{Parse, ParseStream, Parser};
+use syn::spanned::Spanned;
 use syn::{
     Attribute, Data, DeriveInput, Expr, Member, Meta, MetaList, MetaNameValue, Token, parse_quote,
 };
 
-pub fn device_set(input: DeriveInput) -> TokenStream {
+pub fn device_set(input: DeriveInput) -> syn::Result<TokenStream> {
+    let input_span = input.span();
     let name = input.ident;
     let Data::Struct(data) = input.data else {
-        return quote! {
-            ::core::compile_error!("can only derive DeviceSet for structs");
-        };
+        return Err(syn::Error::new(
+            input_span,
+            "can only derive DeviceSet for structs",
+        ));
     };
-    let fields = data.fields.into_iter().enumerate().map(|(i, field)| {
-        let mut extra_args = extra_args(field.attrs).expect("failed to parse attributes");
-        if !extra_args
-            .iter()
-            .any(|(name, _)| name == "name")
-            && let Some(name) = field.ident.clone()
-        {
-            extra_args.push((
-                Ident::new("name", name.span()),
-                parse_quote!(::core::stringify!(#name).to_string()),
-            ))
-        }
-        let args = extra_args.into_iter().map(|(name, expr)| {
-            quote! {
-                .#name(#expr)
+    let fields = data
+        .fields
+        .into_iter()
+        .enumerate()
+        .map(|(i, field)| -> syn::Result<_> {
+            let mut extra_args = extra_args(field.attrs)?;
+            if !extra_args.iter().any(|(name, _)| name == "name")
+                && let Some(name) = field.ident.clone()
+            {
+                extra_args.push((
+                    Ident::new("name", name.span()),
+                    parse_quote!(::core::stringify!(#name).to_string()),
+                ))
             }
-        });
-        let member = if let Some(name) = field.ident {
-            Member::Named(name)
-        } else {
-            Member::Unnamed(i.into())
-        };
-        let ty = field.ty;
-        quote! {
-            #member: #ty::create()
-                .manager(manager.device_manager()?)
-                #(#args)*
-                .call()
-                .await?
-        }
-    });
-    quote! {
+            let args = extra_args.into_iter().map(|(name, expr)| {
+                quote! {
+                    .#name(#expr)
+                }
+            });
+            let member = if let Some(name) = field.ident {
+                Member::Named(name)
+            } else {
+                Member::Unnamed(i.into())
+            };
+            let ty = field.ty;
+            Ok(quote! {
+                #member: #ty::create()
+                    .manager(manager.device_manager()?)
+                    #(#args)*
+                    .call()
+                    .await?
+            })
+        })
+        .collect::<syn::Result<Vec<_>>>()?;
+    Ok(quote! {
         impl ::home_control::device::DeviceSet for #name {
             async fn new(manager: &mut ::home_control::manager::Manager) -> Result<Self, ::home_control::device::CreateDeviceError> {
                 Ok(Self {
@@ -51,19 +57,20 @@ pub fn device_set(input: DeriveInput) -> TokenStream {
                 })
             }
         }
-    }
+    })
 }
 
 fn extra_args(attrs: Vec<Attribute>) -> Result<Vec<(Ident, Expr)>, syn::Error> {
     let mut args = Vec::new();
     for attr in attrs {
+        let attr_span = attr.span();
         match attr.meta {
             Meta::Path(path) => {
                 if path.segments.len() != 1
                     || path
                         .segments
                         .first()
-                        .expect("just checked len")
+                        .ok_or(syn::Error::new(attr_span, "expected at least one segment"))?
                         .ident
                         != "device"
                 {
@@ -79,7 +86,7 @@ fn extra_args(attrs: Vec<Attribute>) -> Result<Vec<(Ident, Expr)>, syn::Error> {
                     || path
                         .segments
                         .first()
-                        .expect("just checked len")
+                        .ok_or(syn::Error::new(attr_span, "expected at least one segment"))?
                         .ident
                         != "device"
                 {
@@ -110,7 +117,11 @@ fn extra_args(attrs: Vec<Attribute>) -> Result<Vec<(Ident, Expr)>, syn::Error> {
                     continue;
                 }
                 args.push((
-                    path.segments.first().expect("checked len").ident.clone(),
+                    path.segments
+                        .first()
+                        .ok_or(syn::Error::new(attr_span, "expected at least one segment"))?
+                        .ident
+                        .clone(),
                     value,
                 ))
             }

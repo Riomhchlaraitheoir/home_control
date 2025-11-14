@@ -40,10 +40,6 @@ impl<S: Stream<Item = ButtonEvent> + Unpin, const MAX: u8> Stream for ButtonPres
                     *count = RangedU8::new(1);
                     *released = false;
                     *timer = Some(Box::pin(new_timer(PRESS_INTERVAL)));
-                    let timer_poll = timer.as_mut().expect("just set Some").as_mut().poll(cx);
-                    if timer_poll.is_ready() {
-                        panic!("Timer should not be ready immediately after starting")
-                    }
                     Poll::Pending
                 }
                 Poll::Ready(Some(_)) | Poll::Pending => Poll::Pending,
@@ -63,10 +59,6 @@ impl<S: Stream<Item = ButtonEvent> + Unpin, const MAX: u8> Stream for ButtonPres
                     } else {
                         *released = false;
                         *timer = Some(Box::pin(new_timer(PRESS_INTERVAL)));
-                        let timer_poll = timer.as_mut().expect("just set Some").as_mut().poll(cx);
-                        if timer_poll.is_ready() {
-                            panic!("Timer should not be ready immediately after starting")
-                        }
                         Poll::Pending
                     }
                 }

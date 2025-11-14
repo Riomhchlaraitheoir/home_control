@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::string::FromUtf8Error;
 
 #[derive(Debug, Clone)]
 pub(crate) struct Publish {
@@ -20,12 +21,13 @@ impl Publish {
     }
 }
 
-impl From<rumqttc::Publish> for Publish {
-    fn from(value: rumqttc::Publish) -> Self {
-        let payload = String::try_from(value.payload.to_vec()).expect("payload should be UTF-8");
-        Self {
+impl TryFrom<rumqttc::Publish> for Publish {
+    type Error = FromUtf8Error;
+    fn try_from(value: rumqttc::Publish) -> Result<Self, Self::Error> {
+        let payload = String::try_from(value.payload.to_vec())?;
+        Ok(Self {
             topic: value.topic,
             raw_payload: payload,
-        }
+        })
     }
 }

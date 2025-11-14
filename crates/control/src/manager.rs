@@ -90,6 +90,7 @@ impl Manager {
             }
 
             debug!("Starting signal listener");
+            #[allow(clippy::unwrap_used, reason = "signal creation is not expected to fail")]
             spawn(async move {
                 let mut interrupt = signal(SignalKind::interrupt()).unwrap();
                 let mut terminate = signal(SignalKind::terminate()).unwrap();

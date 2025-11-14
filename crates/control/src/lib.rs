@@ -8,7 +8,7 @@ pub mod automation;
 
 use crate::button::ButtonPressStream;
 pub use button::ButtonPressEvent;
-use futures::future::join_all;
+use futures::future::{join_all, BoxFuture};
 use futures::{FutureExt, Stream, StreamExt};
 use light_ranged_integers::RangedU8;
 pub use set::*;
@@ -17,6 +17,7 @@ use std::ops::Not;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 use anyhow::Result;
+use futures::stream::BoxStream;
 use pin_project::pin_project;
 use thiserror::Error;
 
@@ -27,7 +28,7 @@ pub trait Sensor {
     /// subscribe returns a stream of data, it should be read from regularly to prevent the
     /// lagging receiver from slowing down other receivers, this stream can be safely dropped
     /// if it is no longer needed
-    fn subscribe(&self) -> Box<dyn Stream<Item = Self::Item> + Unpin + Send + '_>;
+    fn subscribe(&self) -> BoxStream<'_, Self::Item>;
 }
 
 impl<T> dyn Sensor<Item = T> {}
@@ -37,7 +38,7 @@ pub trait ReadValue {
     /// Item is the type of the data fetched from this sensor
     type Item;
     /// get issues a get request and waits for a response, this response may also be observed in the `Sensor::subscribe` stream in some implementations
-    fn get(&self) -> Box<dyn Future<Output = Result<Self::Item>> + Unpin + Send + '_>;
+    fn get(&self) -> BoxFuture<'_, Result<Self::Item>>;
 }
 
 impl<T> dyn ReadValue<Item = T> {}
@@ -51,7 +52,7 @@ pub trait WriteValue {
     fn set(
         &self,
         value: Self::Item,
-    ) -> Box<dyn Future<Output = Result<()>> + Unpin + Send + '_>;
+    ) -> BoxFuture<'_, Result<()>>;
 }
 
 impl<T> dyn WriteValue<Item = T> {}
@@ -60,7 +61,7 @@ impl<T> dyn WriteValue<Item = T> {}
 /// whatever that may mean will depend on the device
 pub trait ToggleValue: WriteValue {
     /// toggles the value
-    fn toggle(&self) -> Box<dyn Future<Output = Result<()>> + Unpin + Send + '_>;
+    fn toggle(&self) -> BoxFuture<'_, Result<()>>;
 }
 
 impl<T> dyn ToggleValue<Item = T> {}
@@ -80,8 +81,8 @@ impl<T: WriteValue> WriteValue for Group<'_, T> where T::Item: Clone {
     fn set(
         &self,
         value: Self::Item,
-    ) -> Box<dyn Future<Output = Result<()>> + Unpin + Send + '_> {
-        Box::new(
+    ) -> BoxFuture<'_, Result<()>> {
+        Box::pin(
             join_all(self.0.iter().map(|item| item.set(value.clone())))
                 .map(|results| results.into_iter().collect())
         )
@@ -89,8 +90,8 @@ impl<T: WriteValue> WriteValue for Group<'_, T> where T::Item: Clone {
 }
 
 impl<T: ToggleValue> ToggleValue for Group<'_, T> where T::Item: Clone {
-    fn toggle(&self) -> Box<dyn Future<Output=Result<()>> + Unpin + Send + '_> {
-        Box::new(
+    fn toggle(&self) -> BoxFuture<'_, Result<()>> {
+        Box::pin(
             join_all(self.0.iter().map(|item| item.toggle()))
                 .map(|results| results.into_iter().collect())
         )
@@ -149,7 +150,7 @@ where
     fn set(
         &self,
         value: Self::Item,
-    ) -> Box<dyn Future<Output = Result<()>> + Unpin + Send + '_> {
+    ) -> BoxFuture<'_, Result<()>> {
         self.0.set(value)
     }
 }
@@ -160,12 +161,12 @@ where
     V: WriteValue,
     <V as ReadValue>::Item: Not<Output = <V as WriteValue>::Item>,
 {
-    fn toggle(&self) -> Box<dyn Future<Output = Result<()>> + Unpin + Send + '_> {
-        Box::new(Box::pin(async {
+    fn toggle(&self) -> BoxFuture<'_, Result<()>> {
+        Box::pin(async {
             let value = self.0.get().await?;
             self.0.set(!value).await?;
             Ok(())
-        }))
+        })
     }
 }
 

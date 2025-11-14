@@ -7,7 +7,7 @@ use light_ranged_integers::{RangedU16, RangedU8};
 use serde::{Deserialize, Deserializer};
 use serde_json::json;
 use std::net::Ipv4Addr;
-use std::sync::Mutex;
+use std::sync::{Mutex, PoisonError};
 use serde::de::Error as _;
 
 /// A Wiz Light
@@ -32,7 +32,7 @@ impl Light {
 
     /// update the tracked state and request to light to change state to match
     pub async fn update_state(&self, f: impl FnOnce(&mut State)) -> Result<(), Error> {
-        let mut state = { *self.state.lock().unwrap() };
+        let mut state = { *self.state.lock().unwrap_or_else(PoisonError::into_inner) };
         f(&mut state);
         let msg = if state.state {
             json! {{"method":"setPilot","params":{"dimming":state.brightness,"temp":state.temp,"state":true}}}
@@ -44,7 +44,7 @@ impl Light {
             msg,
         )
         .await?;
-        *self.state.lock().unwrap() = state;
+        *self.state.lock().unwrap_or_else(PoisonError::into_inner) = state;
         Ok(())
     }
 
@@ -77,7 +77,7 @@ impl Light {
     /// Returns the last observed state of the light, this is not guaranteed to be accurate since
     /// the light can change state without notice if a command is sent from another source
     pub fn last_state(&self) -> State {
-        *self.state.lock().unwrap()
+        *self.state.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
     /// retrieve the current state from the light
@@ -85,7 +85,7 @@ impl Light {
         let state = udp_request(self.addr, json! {{"method": "getPilot", "params": {}}})
             .await?
             .result;
-        *self.state.lock().unwrap() = state;
+        *self.state.lock().unwrap_or_else(PoisonError::into_inner) = state;
         Ok(state)
     }
 }

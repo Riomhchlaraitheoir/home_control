@@ -4,6 +4,8 @@ mod attribute;
 mod publish;
 
 use crate::publish::Publish;
+use bon::bon;
+use control::manager::DeviceManager;
 use control::ReadValue;
 use control::Sensor;
 use control::ToggleValue;
@@ -12,17 +14,15 @@ use rumqttc::{AsyncClient, Event, EventLoop, Incoming, MqttOptions, QoS};
 use serde::Deserialize;
 use serde_json::Value;
 use std::marker::PhantomData;
-use bon::bon;
-use tokio::{select, spawn};
 use tokio::sync::broadcast::Sender;
 use tokio::sync::{broadcast, mpsc};
+use tokio::{select, spawn};
+use tokio_stream::wrappers::errors::BroadcastStreamRecvError;
+use tokio_stream::wrappers::BroadcastStream;
 use tokio_stream::Stream;
 use tokio_stream::StreamExt;
-use tokio_stream::wrappers::errors::BroadcastStreamRecvError;
-use tokio_stream::wrappers::{BroadcastStream};
 use tokio_util::sync::CancellationToken;
-use tracing::{debug, warn};
-use control::manager::DeviceManager;
+use tracing::{debug, error, warn};
 
 /// Definitions for all supported zigbee devices
 pub mod devices {
@@ -116,7 +116,10 @@ impl Manager {
                     let Incoming::Publish(publish) = message else {
                         continue;
                     };
-                    let publish: Publish = publish.into();
+                    let Ok(publish): Result<Publish, _> = publish.try_into() else {
+                        error!("failed to decode incoming publish payload");
+                        continue
+                    };
                     debug!("received publish: {publish:?}");
                     for Subscription { sender, .. } in subscriptions
                         .iter()
@@ -139,10 +142,11 @@ impl Manager {
     ) {
         debug!("creating subscriptions");
         for subscription in subscriptions {
-            client
+            if let Err(error) = client
                 .subscribe(&subscription.topic, QoS::AtLeastOnce)
-                .await
-                .expect("failed to create subscription")
+                .await {
+                error!("Failed to subscribe to topic {}: {error}", subscription.topic);
+            }
         }
         debug!("subscriptions created");
         debug!("starting publish loop");
@@ -155,15 +159,16 @@ impl Manager {
                 break
             };
             debug!("sending publish: {publish:?}");
-            client
+            if let Err(error) = client
                 .publish(
                     format!("zigbee2mqtt/{}", publish.topic),
                     QoS::AtMostOnce,
                     false,
                     publish.raw_payload,
                 )
-                .await
-                .expect("failed to publish payload")
+                .await {
+                error!("Failed to publish payload: {error}");
+            }
         }
         debug!("finishing subscription loop");
     }

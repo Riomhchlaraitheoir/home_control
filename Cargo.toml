@@ -11,7 +11,9 @@ missing_docs = "warn"
 async_fn_in_trait = "allow"
 
 [workspace.lints.clippy]
-#missing_errors_doc = "warn"
+unwrap_used = "warn"
+expect_used = "warn"
+panic = "warn"
 
 [workspace.dependencies]
 rumqttc = "0.25.0"
@@ -55,6 +57,9 @@ testing = { path = "crates/testing" }
 name = "home_control"
 version.workspace = true
 edition.workspace = true
+
+[lints]
+workspace = true
 
 [features]
 default = []
