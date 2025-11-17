@@ -44,11 +44,12 @@ impl<'a> Automation<'a> {
     /// * `name` is the automation's name, used mostly for tracing
     /// * `input` is the input stream to trigger this automation
     /// * `action` is the action to run for each trigger
-    pub fn new<S, A>(name: String, input: S, action: A) -> Self
+    pub fn new<S, A>(name: impl Into<String>, input: S, action: A) -> Self
     where
         S: Stream + Send + 'a,
         A: Action<S::Item> + 'a,
     {
+        let name = name.into();
         let futures = JobStream::new(name.clone(), input, action);
         Automation {
             name,
