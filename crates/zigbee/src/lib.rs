@@ -5,24 +5,25 @@ mod publish;
 
 use crate::publish::Publish;
 use bon::bon;
-use control::manager::DeviceManager;
 use control::ReadValue;
 use control::Sensor;
 use control::ToggleValue;
 use control::WriteValue;
+use control::manager::DeviceManager;
 use rumqttc::{AsyncClient, Event, EventLoop, Incoming, MqttOptions, QoS};
 use serde::Deserialize;
 use serde_json::Value;
 use std::marker::PhantomData;
 use tokio::sync::broadcast::Sender;
-use tokio::sync::{broadcast, mpsc};
+use tokio::sync::oneshot::Receiver;
+use tokio::sync::{broadcast, mpsc, oneshot};
 use tokio::{select, spawn};
-use tokio_stream::wrappers::errors::BroadcastStreamRecvError;
-use tokio_stream::wrappers::BroadcastStream;
 use tokio_stream::Stream;
 use tokio_stream::StreamExt;
+use tokio_stream::wrappers::BroadcastStream;
+use tokio_stream::wrappers::errors::BroadcastStreamRecvError;
 use tokio_util::sync::CancellationToken;
-use tracing::{debug, error, warn};
+use tracing::{debug, error, info_span, warn, Instrument};
 
 /// Definitions for all supported zigbee devices
 pub mod devices {
@@ -50,7 +51,7 @@ impl Manager {
     #[builder]
     pub fn new(
         /// The MQTT options used to establish a connection
-        mqtt_options: MqttOptions
+        mqtt_options: MqttOptions,
     ) -> Self {
         let (publishes, outgoing) = mpsc::channel::<Publish>(100);
         Self {
@@ -67,12 +68,20 @@ impl DeviceManager for Manager {
         let mqttoptions = self.mqtt_options;
         let (client, event_loop) = AsyncClient::new(mqttoptions, 10);
 
+        let (ready_send, ready_recv) = oneshot::channel();
         spawn(Self::subscription_job(
             event_loop,
             self.subscriptions.clone(),
-            token.clone()
-        ));
-        spawn(Self::publish_job(client, self.outgoing, self.subscriptions, token));
+            token.clone(),
+            ready_send,
+        ).instrument(info_span!("zigbee::subscription_job")));
+        spawn(Self::publish_job(
+            client,
+            self.outgoing,
+            self.subscriptions,
+            token,
+            ready_recv,
+        ).instrument(info_span!("zigbee::publish_job")));
     }
 }
 
@@ -96,7 +105,15 @@ impl Manager {
         self.publishes.clone()
     }
 
-    async fn subscription_job(mut event_loop: EventLoop, subscriptions: Vec<Subscription>, token: CancellationToken) {
+    async fn subscription_job(
+        mut event_loop: EventLoop,
+        subscriptions: Vec<Subscription>,
+        token: CancellationToken,
+        ready: oneshot::Sender<()>,
+    ) {
+        if ready.send(()).is_err() {
+            error!("Ready channel dropped before ready signal could be send to publish thread")
+        }
         loop {
             let event = select! {
                 _ = token.cancelled() => break,
@@ -118,7 +135,7 @@ impl Manager {
                     };
                     let Ok(publish): Result<Publish, _> = publish.try_into() else {
                         error!("failed to decode incoming publish payload");
-                        continue
+                        continue;
                     };
                     debug!("received publish: {publish:?}");
                     for Subscription { sender, .. } in subscriptions
@@ -139,13 +156,22 @@ impl Manager {
         mut publishes: mpsc::Receiver<Publish>,
         subscriptions: Vec<Subscription>,
         token: CancellationToken,
+        ready: Receiver<()>,
     ) {
+        if ready.await.is_err() {
+            error!("Ready channel sender dropped before ready signal could be send to publish thread, publish thread exiting");
+            return
+        }
         debug!("creating subscriptions");
         for subscription in subscriptions {
             if let Err(error) = client
                 .subscribe(&subscription.topic, QoS::AtLeastOnce)
-                .await {
-                error!("Failed to subscribe to topic {}: {error}", subscription.topic);
+                .await
+            {
+                error!(
+                    "Failed to subscribe to topic {}: {error}",
+                    subscription.topic
+                );
             }
         }
         debug!("subscriptions created");
@@ -155,9 +181,7 @@ impl Manager {
                 _ = token.cancelled() => break,
                 option = publishes.recv() => option
             };
-            let Some(publish) = option else {
-                break
-            };
+            let Some(publish) = option else { break };
             debug!("sending publish: {publish:?}");
             if let Err(error) = client
                 .publish(
@@ -166,7 +190,8 @@ impl Manager {
                     false,
                     publish.raw_payload,
                 )
-                .await {
+                .await
+            {
                 error!("Failed to publish payload: {error}");
             }
         }
