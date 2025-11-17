@@ -1,3 +1,6 @@
+#![allow(clippy::expect_used, clippy::unwrap_used, clippy::panic, reason = "Panics are forgivable while testing")]
+//! A simple example showing how a lightswitch could be implemented
+
 use control::{ButtonEvent, Sensor, ToggleValue};
 use home_control::automation::Automation;
 use home_control::zigbee::devices::philips::{HueSmartButton, Light};

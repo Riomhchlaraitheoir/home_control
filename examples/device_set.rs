@@ -1,3 +1,8 @@
+#![allow(clippy::expect_used, clippy::unwrap_used, clippy::panic, reason = "Panics are forgivable while testing")]
+//! An example of the DeviceSet derive macro and it's syntax.
+//!
+//! This macro allows for devices to be defined in a unified location for easy reference
+
 use control::manager::Manager;
 use home_control::arp::{ArpDevice, MacAddr};
 use macros::DeviceSet;

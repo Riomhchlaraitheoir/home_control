@@ -1,3 +1,8 @@
+#![allow(clippy::expect_used, clippy::unwrap_used, clippy::panic, reason = "Panics are forgivable while testing")]
+//! A working test which mocks some simple devices
+//!
+//! This test is designed to ensure that automations are triggered and running properly in the general case
+
 use control::{ButtonEvent, Sensor, ToggleValue};
 use home_control::automation::Automation;
 use home_control::zigbee::devices::philips::{HueSmartButton, Light};
