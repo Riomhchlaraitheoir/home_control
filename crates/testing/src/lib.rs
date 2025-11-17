@@ -1,4 +1,5 @@
 //! A crate with utilities useful for testing
+#![allow(clippy::expect_used, clippy::unwrap_used, clippy::panic, reason = "Panics are forgivable while testing")]
 
 use futures::StreamExt;
 use log::{debug, info, warn};
