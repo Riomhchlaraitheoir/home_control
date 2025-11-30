@@ -1,3 +1,5 @@
+use derive_more::Display;
+use control::enum_value;
 use macros::zigbee_device;
 use metric::temperature::TemperatureUnit;
 
@@ -35,8 +37,21 @@ zigbee_device! {
 
 /// An action detected by the button
 #[allow(missing_docs, reason = "self-explanatory variants")]
-#[derive(Debug, Clone, Copy, Eq, PartialEq)]
-pub enum ButtonAction { Single, Double, Long }
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Display)]
+pub enum ButtonAction {
+    #[display("single")]
+    Single,
+    #[display("double")]
+    Double,
+    #[display("long")]
+    Long
+}
+
+enum_value!(ButtonAction,
+    "single" => Single,
+    "double" => Double,
+    "long" => Long
+);
 
 // https://www.zigbee2mqtt.io/devices/SNZB-02D.html
 zigbee_device! {

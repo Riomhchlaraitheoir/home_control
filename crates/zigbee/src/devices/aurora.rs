@@ -1,4 +1,4 @@
-use control::{ReadValue, Sensor, SwitchState, ToggleValue};
+use control::{ReadValue, Sensor, ToggleValue};
 use macros::zigbee_device;
 
 // https://www.zigbee2mqtt.io/devices/AU-A1ZBDSS.html
@@ -7,14 +7,14 @@ zigbee_device! {
     pub DoubleWallSocketTypeG {
         "https://www.zigbee2mqtt.io/devices/AU-A1ZBDSS.html",
         /// The state of the left switch
-        get set toggle "state_left" => enum SwitchState {
-            "ON" => On,
-            "OFF" => Off
+        get set toggle "state_left" => bool {
+            "ON" => true,
+            "OFF" => false
         },
         /// The state of the right switch
-        get set toggle "state_right" => enum SwitchState {
-            "ON" => On,
-            "OFF" => Off
+        get set toggle "state_right" => bool {
+            "ON" => true,
+            "OFF" => false
         },
         /// The power consumption of the left socket
         stream "power_left" => u32,
@@ -50,10 +50,10 @@ struct WallSocketTypeG<'a, State, Power> {
 
 impl<'a, State, Power> WallSocket<'a> for WallSocketTypeG<'a, State, Power>
 where
-    State: Clone + ReadValue<Item = SwitchState> + ToggleValue<Item = SwitchState>,
+    State: Clone + ReadValue<Item = bool> + ToggleValue<Item = bool>,
     Power: Clone + Sensor<Item = u32>
 {
-    fn state(&self) -> &'a (impl ReadValue<Item = SwitchState> + ToggleValue<Item = SwitchState>) {
+    fn state(&self) -> &'a (impl ReadValue<Item = bool> + ToggleValue<Item = bool>) {
         self.state
     }
 
@@ -65,7 +65,7 @@ where
 /// A smart wall socket
 pub trait WallSocket<'a> {
     /// The state of the switch
-    fn state(&self) -> &'a (impl ReadValue<Item = SwitchState> + ToggleValue<Item = SwitchState>);
+    fn state(&self) -> &'a (impl ReadValue<Item = bool> + ToggleValue<Item = bool>);
     /// The power consumption
     fn power(&self) -> &'a impl Sensor<Item = u32>;
 }

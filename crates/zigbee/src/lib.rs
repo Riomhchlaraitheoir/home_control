@@ -9,7 +9,7 @@ use control::ReadValue;
 use control::Sensor;
 use control::ToggleValue;
 use control::WriteValue;
-use control::manager::DeviceManager;
+use control::device_manager::DeviceManager;
 use rumqttc::{AsyncClient, Event, EventLoop, Incoming, MqttOptions, QoS};
 use serde::Deserialize;
 use serde_json::Value;

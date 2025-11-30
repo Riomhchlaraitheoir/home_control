@@ -2,8 +2,9 @@ use crate::device::{Mode, NumericKind, Type, Value, Variant};
 use crate::*;
 use proc_macro2::Span;
 use syn::parse::{Parse, ParseStream};
-use syn::{braced, parse_quote, Attribute, Expr, ExprLit, Ident, Lit, LitStr, Meta, MetaNameValue, Path, Token};
 use syn::spanned::Spanned;
+use syn::token::Brace;
+use syn::{braced, parse_quote, Attribute, Expr, ExprLit, Ident, Lit, LitBool, LitStr, Meta, MetaNameValue, Path, Token};
 
 mod kw {
     use syn::custom_keyword;
@@ -168,7 +169,30 @@ impl Parse for Type {
             Ok(Self::Enum { path, variants })
         } else if input.peek(kw::bool) {
             input.parse::<kw::bool>()?;
-            Ok(Self::Bool)
+            let variants = if input.peek(Brace) {
+                let content;
+                braced!(content in input);
+                let first_name = content.parse()?;
+                content.parse::<Token![=>]>()?;
+                let first_value: LitBool = content.parse()?;
+                content.parse::<Token![,]>()?;
+                let second_name = content.parse()?;
+                content.parse::<Token![=>]>()?;
+                let second_value: LitBool = content.parse()?;
+                if content.peek(Token![,]) {
+                    content.parse::<Token![,]>()?;
+                }
+                Some(match (first_value.value, second_value.value) {
+                    (true, true) | (false, false) => {
+                        return Err(syn::Error::new(second_value.span, "this value cannot be the same as the previous value"))
+                    }
+                    (false, true) => [first_name, second_name],
+                    (true, false) => [second_name, first_name],
+                })
+            } else {
+                None
+            };
+            Ok(Self::Bool(variants))
         } else {
             let kind = input.parse()?;
             let range = if input.peek(Token![<]) {

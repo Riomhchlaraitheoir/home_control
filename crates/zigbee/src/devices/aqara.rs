@@ -1,4 +1,5 @@
-use control::SwitchState;
+use control::enum_value;
+use derive_more::Display;
 use macros::zigbee_device;
 
 zigbee_device! {
@@ -9,14 +10,14 @@ zigbee_device! {
     pub SmartWallSwitchSingle {
         "https://www.zigbee2mqtt.io/devices/QBKG04LM.html",
         /// The state of the physical switch
-        get set toggle "switch" => enum SwitchState {
-            "ON" => On,
-            "OFF" => Off,
+        get set toggle "switch" => bool {
+            "ON" => true,
+            "OFF" => false,
         },
-        /// operation mode determines if the physical switch is coupled to the rocker or not
-        stream set "operation_mode" => enum OperationMode {
-            "control_relay" => ControlRelay,
-            "decoupled" => Decoupled,
+        /// determines if the physical switch is coupled to the rocker or not
+        stream set "operation_mode" => coupled: bool {
+            "control_relay" => true,
+            "decoupled" => false,
         },
         /// The actions detected by the rocker
         stream "action" => enum Action {
@@ -41,17 +42,16 @@ pub enum Action {
     /// The button is pressed
     Single,
     /// The button is released after being held
-    HoldRelease
+    HoldRelease,
 }
 
-#[derive(Debug, Clone, Copy, Eq, PartialEq)]
-/// determines the behaviour of an Aqara rocker switch
-pub enum OperationMode {
-    /// Relay actions from the rocker to the switch
-    ControlRelay,
-    /// Do not relay actions, instead both can be used in automations
-    Decoupled
-}
+enum_value!(Action,
+    "release" => Release,
+    "hold" => Hold,
+    "double" => Double,
+    "single" => Single,
+    "hold-release" => HoldRelease
+);
 
 zigbee_device! {
     /// Aqara Roller Shade Driver E1
@@ -60,9 +60,9 @@ zigbee_device! {
     pub RollerShadeDriver {
         "https://www.zigbee2mqtt.io/devices/ZNJLBL01LM.html",
         /// The current state of the blinds
-        get "state" => enum RollerShadeDriverState {
-            "OPEN" => Open,
-            "CLOSE" => Close
+        get "state" => open: bool {
+            "OPEN" => true,
+            "CLOSE" => false
         },
         /// A command to be sent to the device
         set "command" => enum RollerShadeDriverStateCommand {
@@ -94,16 +94,6 @@ zigbee_device! {
     }
 }
 
-
-/// Represents the operational state of a roller shade driver.
-#[derive(Debug, Clone, Copy, Eq, PartialEq)]
-pub enum RollerShadeDriverState {
-    /// The blinds are open
-    Open,
-    /// The blinds are closed
-    Close
-}
-
 /// Represents the set of commands that can be issued to control a roller shade driver.
 ///
 /// This enum defines the possible states or commands that can be sent to a roller shade device
@@ -115,11 +105,17 @@ pub enum RollerShadeDriverStateCommand {
     /// close the blinds
     Close,
     /// stop the motor
-    Stop
+    Stop,
 }
 
+enum_value!(RollerShadeDriverStateCommand,
+    "open" => Open,
+    "close" => Close,
+    "stop" => Stop
+);
+
 /// The `RollerShadeDriverMotorState` enum represents the operational states of a motor that controls a roller shade.
-#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Display)]
 pub enum RollerShadeDriverMotorState {
     /// The blinds are closing
     Closing,
@@ -128,22 +124,38 @@ pub enum RollerShadeDriverMotorState {
     /// The blinds are stopped
     Stopped,
     /// The blinds are stopped due to being blocked by something
-    Blocked
+    Blocked,
 }
+
+enum_value!(RollerShadeDriverMotorState,
+    "closing" => Closing,
+    "opening" => Opening,
+    "stopped" => Stopped,
+    "blocked" => Blocked
+);
 
 /// An enumeration representing the speed settings for a roller shade driver's motor.
 ///
 /// This enum is used to define the different speed levels at which a roller shade's motor can operate.
-#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Display)]
 pub enum RollerShadeDriverMotorSpeed {
+    #[display("low")]
     /// low speed
     Low,
+    #[display("medium")]
     /// medium speed
     Medium,
+    #[display("high")]
     /// high speed
-    High
+    High,
 }
 
+enum_value!(RollerShadeDriverMotorSpeed,
+    "low" => Low,
+    "medium" => Medium,
+    "high" => High
+
+);
 
 zigbee_device! {
     /// Aqara Water leak sensor

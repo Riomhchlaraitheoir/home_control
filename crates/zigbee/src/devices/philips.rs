@@ -1,4 +1,4 @@
-use control::{ButtonEvent, SwitchState};
+use control::ButtonEvent;
 use macros::zigbee_device;
 
 zigbee_device!{
@@ -14,9 +14,9 @@ zigbee_device!{
         /// The switch events detected by the button.
         ///
         /// This button is able to function as a switch in addition to a simple button
-        stream "action" => switch: enum SwitchState {
-            "on" => On,
-            "off" => Off,
+        stream "action" => switch: bool {
+            "on" => true,
+            "off" => false,
         }
     }
 }
@@ -26,9 +26,9 @@ zigbee_device!{
     pub Light {
         "https://www.zigbee2mqtt.io/devices/9290024693.html#philips-9290024693",
         /// The current state of the bulb, on or off
-        get set toggle "state" => enum SwitchState {
-            "ON" => On,
-            "OFF" => Off,
+        get set toggle "state" => bool {
+            "ON" => true,
+            "OFF" => false,
         },
         /// The current brightness of the bulb, expressed as a u8
         get set "brightness" => u8<0, 254>

@@ -2,22 +2,28 @@
 
 use bon::bon;
 use derive_more::Deref;
+use futures::future::BoxFuture;
+use futures::stream::BoxStream;
 use futures::{Stream, StreamExt};
 use pnet::datalink::{Channel, DataLinkReceiver, DataLinkSender, NetworkInterface};
 use pnet::packet::arp::{ArpHardwareTypes, ArpOperations, ArpPacket, MutableArpPacket};
 use pnet::packet::ethernet::{EtherTypes, EthernetPacket, MutableEthernetPacket};
 use std::collections::HashMap;
+use std::future::ready;
 use std::io;
 use std::net::{IpAddr, Ipv4Addr};
 use std::ops::Range;
 use std::thread::sleep;
 use std::time::{Duration, Instant};
-use tokio::sync::watch::{Receiver, Sender, channel};
+use tokio::sync::watch::{channel, Receiver, Sender};
 use tokio_stream::wrappers::WatchStream;
 use tracing::{debug, debug_span, error, trace};
 
 use control::device::Device;
-use control::manager::DeviceManager;
+use control::device_manager::DeviceManager;
+use control::reflect;
+use control::reflect::value::{Value, ValueType};
+use control::reflect::{DeviceInfo, Field, Operation, SetError};
 pub use pnet::util::MacAddr;
 use thiserror::Error;
 use tokio::spawn;
@@ -88,7 +94,10 @@ pub struct ArpScanner {
 
 /// An ARP device, this represents a watched device and exposes some methods for getting current
 /// status and listening for changes
-pub struct ArpDevice(Receiver<Option<Ipv4Addr>>);
+pub struct ArpDevice {
+    name: String,
+    receiver: Receiver<Option<Ipv4Addr>>,
+}
 
 #[bon]
 impl ArpDevice {
@@ -114,8 +123,9 @@ impl ArpDevice {
         /// The device to scan for
         device: MacAddr,
     ) -> anyhow::Result<Self> {
-        Self::new(
+        Self::new_with_args(
             manager,
+            name.clone(),
             NetworkScannerConfig {
                 name,
                 interface_name,
@@ -131,19 +141,19 @@ impl ArpDevice {
 
     /// Returns the IP address of the device if it is connected to the network, and None otherwise
     pub fn ip_addr(&self) -> Option<Ipv4Addr> {
-        *self.0.borrow()
+        *self.receiver.borrow()
     }
 
     /// Returns true if the device is currently connected to the network
     pub fn online(&self) -> bool {
-        self.0.borrow().is_some()
+        self.receiver.borrow().is_some()
     }
 
     /// Returns a stream of updates from the scanner, if the value is `None`, that implies that
     /// the device is not connected to the network,. otherwise when the value is `Some(ip_addr)`
     /// it means that the device is connected and has the given IP address
     pub fn ip_addr_changes(&self) -> impl Stream<Item = Option<Ipv4Addr>> {
-        WatchStream::from_changes(self.0.clone())
+        WatchStream::from_changes(self.receiver.clone())
     }
 
     /// Returns a stream of changes to the online status of the device
@@ -156,13 +166,84 @@ impl Device for ArpDevice {
     type Args = NetworkScannerConfig;
     type Manager = ArpManager;
 
-    async fn new(
+    async fn new_with_args(
         manager: &mut Self::Manager,
+        name: String,
         config: NetworkScannerConfig,
     ) -> anyhow::Result<Self> {
         let (scanner, receiver) = ArpScanner::new(config)?;
         manager.scanners.push(scanner);
-        Ok(ArpDevice(receiver))
+        Ok(ArpDevice { name, receiver })
+    }
+}
+
+impl reflect::Device for ArpDevice {
+    fn info(&self) -> DeviceInfo {
+        DeviceInfo {
+            name: self.name.clone(),
+            fields: vec![
+                Field {
+                    name: "detected".to_string(),
+                    allow_subscribe: true,
+                    allow_get: true,
+                    allow_set: false,
+                    allow_toggle: false,
+                    value_type: ValueType::Bool,
+                }
+            ],
+        }
+    }
+
+    fn subscribe(&self, field: &str) -> Result<BoxStream<'_, Value>, reflect::Error> {
+        if field == "detected" {
+            Ok(Box::pin(self.online_changes().map(Value::from)))
+        } else {
+            Err(reflect::Error::FieldNotFound {
+                device: self.name.clone(),
+                field: field.to_string(),
+            })
+        }
+    }
+
+    fn get(&self, field: &str) -> Result<BoxFuture<'_, anyhow::Result<Value>>, reflect::Error> {
+        if field == "detected" {
+            Ok(Box::pin(ready(Ok(self.online().into()))))
+        } else {
+            Err(reflect::Error::FieldNotFound {
+                device: self.name.clone(),
+                field: field.to_string(),
+            })
+        }
+    }
+
+    fn set(&self, field: &str, _: Value) -> Result<BoxFuture<'_, anyhow::Result<()>>, SetError> {
+        if field == "detected" {
+            Err(reflect::Error::OperationNotSupported {
+                device: self.name.clone(),
+                field: field.to_string(),
+                operation: Operation::Set,
+            }.into())
+        } else {
+            Err(reflect::Error::FieldNotFound {
+                device: self.name.clone(),
+                field: field.to_string(),
+            }.into())
+        }
+    }
+
+    fn toggle(&self, field: &str) -> Result<BoxFuture<'_, anyhow::Result<()>>, reflect::Error> {
+        if field == "detected" {
+            Err(reflect::Error::OperationNotSupported {
+                device: self.name.clone(),
+                field: field.to_string(),
+                operation: Operation::Toggle,
+            })
+        } else {
+            Err(reflect::Error::FieldNotFound {
+                device: self.name.clone(),
+                field: field.to_string(),
+            })
+        }
     }
 }
 

@@ -44,6 +44,54 @@ impl Mode {
             Mode::StreamGetSetToggle => SubPub::Both,
         }
     }
+
+    fn allow_subscribe(&self) -> bool {
+        match self {
+            Mode::Stream => true,
+            Mode::StreamGet => true,
+            Mode::Set => false,
+            Mode::StreamSet => true,
+            Mode::StreamGetSet => true,
+            Mode::SetToggle => false,
+            Mode::StreamGetSetToggle => true,
+        }
+    }
+
+    fn allow_get(&self) -> bool {
+        match self {
+            Mode::Stream => false,
+            Mode::StreamGet => true,
+            Mode::Set => false,
+            Mode::StreamSet => false,
+            Mode::StreamGetSet => true,
+            Mode::SetToggle => false,
+            Mode::StreamGetSetToggle => true,
+        }
+    }
+
+    fn allow_set(&self) -> bool {
+        match self {
+            Mode::Stream => false,
+            Mode::StreamGet => false,
+            Mode::Set => true,
+            Mode::StreamSet => true,
+            Mode::StreamGetSet => true,
+            Mode::SetToggle => true,
+            Mode::StreamGetSetToggle => true,
+        }
+    }
+
+    fn allow_toggle(&self) -> bool {
+        match self {
+            Mode::Stream => false,
+            Mode::StreamGet => false,
+            Mode::Set => false,
+            Mode::StreamSet => false,
+            Mode::StreamGetSet => false,
+            Mode::SetToggle => true,
+            Mode::StreamGetSetToggle => true,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -63,7 +111,7 @@ enum Type {
         kind: NumericKind,
         range: Option<(LitInt, LitInt)>
     },
-    Bool
+    Bool(Option<[LitStr; 2]>)
 }
 
 #[derive(Clone, Debug)]

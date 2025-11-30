@@ -15,9 +15,12 @@ pub fn device_set(input: DeriveInput) -> syn::Result<TokenStream> {
             "can only derive DeviceSet for structs",
         ));
     };
+    let members = data.fields.members();
+    let member_count = data.fields.len();
     let fields = data
         .fields
-        .into_iter()
+        .iter()
+        .cloned()
         .enumerate()
         .map(|(i, field)| -> syn::Result<_> {
             let mut extra_args = extra_args(field.attrs)?;
@@ -51,10 +54,23 @@ pub fn device_set(input: DeriveInput) -> syn::Result<TokenStream> {
         .collect::<syn::Result<Vec<_>>>()?;
     Ok(quote! {
         impl ::home_control::device::DeviceSet for #name {
-            async fn new(manager: &mut ::home_control::manager::Manager) -> Result<Self, ::home_control::device::CreateDeviceError> {
+            async fn new(manager: &mut ::home_control::Manager<'_>) -> Result<Self, ::home_control::device::CreateDeviceError> {
                 Ok(Self {
                     #(#fields),*
                 })
+            }
+        }
+
+        impl IntoIterator for #name {
+            type Item = Box<dyn ::home_control::reflect::Device>;
+            type IntoIter = std::array::IntoIter<Box<dyn ::home_control::reflect::Device>, #member_count>;
+
+            fn into_iter(self) -> Self::IntoIter {
+                [
+                    #(
+                    Box::new(self.#members) as Box<dyn ::home_control::reflect::Device>
+                    ),*
+                ].into_iter()
             }
         }
     })

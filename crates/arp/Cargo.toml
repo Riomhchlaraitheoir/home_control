@@ -17,7 +17,7 @@ derive_more = { workspace = true }
 control.workspace = true
 futures.workspace = true
 bon = { workspace = true }
-anyhow = "1.0.100"
+anyhow = { workspace = true }
 
 [dev-dependencies]
 simple-log = { workspace = true }

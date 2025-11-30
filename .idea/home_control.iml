@@ -17,6 +17,10 @@
       <sourceFolder url="file://$MODULE_DIR$/crates/testing/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/tests" isTestSource="true" />
       <sourceFolder url="file://$MODULE_DIR$/crates/docker-builder/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/api/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/web/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/frontend/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/leptos-api/src" isTestSource="false" />
       <excludeFolder url="file://$MODULE_DIR$/target" />
     </content>
     <orderEntry type="inheritedJdk" />

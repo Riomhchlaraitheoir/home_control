@@ -9,7 +9,7 @@ use rumqttc::MqttOptions;
 use simple_log::LogConfigBuilder;
 use std::time::Duration;
 use tokio_stream::StreamExt;
-use control::manager::Manager;
+use control::Manager;
 
 #[tokio::main]
 async fn main() {

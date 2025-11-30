@@ -1,7 +1,47 @@
 use super::{Device, Mode, NumericKind, SubPub, Type, Value, Variant};
-use proc_macro2::{Ident, TokenStream};
-use quote::{ToTokens, quote};
-use syn::LitStr;
+use proc_macro2::{Group, Ident, TokenStream, TokenTree};
+use quote::{quote, ToTokens};
+use std::collections::HashMap;
+use syn::{parse_str, LitStr, Path};
+
+macro_rules! imports {
+    ($(use $path:path$(as $alias:ident)?;)*) => {
+        const IMPORTS: &[(&str, Option<&str>)] = &[
+            $(
+            {
+                #[allow(unused_variables, reason = "only way to make the macro work, only impacts compile time anyway")]
+                let alias = Option::<&str>::None;
+                $(let alias = Some(stringify!($alias));)?
+                (stringify!(::$path), alias)
+            }
+            ),*
+        ];
+    };
+}
+
+imports! {
+    use bon::bon;
+    use serde::Deserialize;
+    use serde::Deserializer;
+    use control::device::Device;
+    use control::Sensor;
+    use control::ReadValue;
+    use control::ToggleValue;
+    use control::WriteValue;
+    use control::reflect::Device as ReflectDevice;
+    use control::reflect::DeviceInfo;
+    use control::reflect::Field;
+    use control::reflect::Error;
+    use control::reflect::SetError;
+    use control::reflect::Operation;
+    use control::reflect::value::Value;
+    use control::reflect::value::ValueType;
+    use futures::stream::Stream;
+    use futures::stream::StreamExt;
+    use futures::stream::BoxStream;
+    use futures::future::BoxFuture;
+    use futures::future::FutureExt;
+}
 
 impl ToTokens for Device {
     fn to_tokens(&self, tokens: &mut TokenStream) {
@@ -12,7 +52,114 @@ impl ToTokens for Device {
         self.clone().into_token_stream()
     }
 
-    fn into_token_stream(self) -> TokenStream
+    fn into_token_stream(self) -> TokenStream {
+        let imports = IMPORTS.iter().map(|(path, alias)| {
+            #[allow(clippy::expect_used, reason = "If this panics it would certainly be hit during development")]
+            let path: Path = parse_str(path).expect("failed to parse import path");
+            let ident = if let Some(alias) = alias {
+                alias.to_string()
+            } else {
+                #[allow(clippy::expect_used, reason = "If this panics it would certainly be hit during development")]
+                path.segments.last().expect("import path has no segments").ident.to_string()
+            };
+            (ident, path.into_token_stream())
+        }).collect();
+        import_idents(self.build_token_stream(), &imports)
+    }
+}
+
+fn import_idents(tokens: TokenStream, imports: &HashMap<String, TokenStream>) -> TokenStream {
+    Importer {
+        imports,
+        tokens: tokens.into_iter(),
+        state: ImporterState::Normal {
+            sep_count: 0
+        },
+    }.collect()
+}
+
+struct Importer<'a> {
+    imports: &'a HashMap<String, TokenStream>,
+    tokens: <TokenStream as IntoIterator>::IntoIter,
+    state: ImporterState
+}
+
+enum ImporterState {
+    Normal {
+        sep_count: u8,
+    },
+    Path(<TokenStream as IntoIterator>::IntoIter)
+}
+
+impl Iterator for Importer<'_> {
+    type Item = TokenTree;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let sep_count = match &mut self.state {
+            ImporterState::Normal { sep_count } => {
+                let count = *sep_count;
+                *sep_count = 0;
+                count
+            },
+            ImporterState::Path(iterator) => {
+                if let Some(next) = iterator.next() {
+                    return Some(next);
+                } else {
+                    self.state = ImporterState::Normal {
+                        sep_count: 0
+                    };
+                    0
+                }
+            }
+        };
+        let tree = self.tokens.next()?;
+        let tree = match tree {
+            TokenTree::Group(group) => {
+                TokenTree::Group(Group::new(group.delimiter(), import_idents(group.stream(), self.imports)))
+            }
+            TokenTree::Ident(ident) => {
+                if sep_count == 2 {
+                    // just after a separator, do not import
+                    return Some(TokenTree::Ident(ident))
+                }
+                let s = ident.to_string();
+                let Some(path) = self.imports.get(&s) else {
+                    return Some(TokenTree::Ident(ident))
+                };
+                let mut tokens = path.into_token_stream().into_iter();
+                #[allow(clippy::expect_used, reason = "If this panics it would certainly be hit during development")]
+                let first = tokens.next().expect("import parsed to a empty steam");
+                self.state = ImporterState::Path(tokens);
+                first
+            }
+            TokenTree::Punct(punct) => {
+                if punct.as_char() == ':' {
+                    self.state = ImporterState::Normal {
+                        sep_count: sep_count+1
+                    };
+                }
+                TokenTree::Punct(punct)
+            }
+            other => other
+        };
+        Some(tree)
+    }
+}
+
+macro_rules! unsupported_op {
+    ($operation:ident) => {
+        quote! {
+            Err(Error::OperationNotSupported {
+                device: self.name.to_owned(),
+                field: field.to_owned(),
+                operation: Operation::$operation
+            }.into())
+        }
+    };
+}
+
+impl Device {
+    fn build_token_stream(self) -> TokenStream
     where
         Self: Sized,
     {
@@ -20,9 +167,15 @@ impl ToTokens for Device {
         // let debug = LitStr::new(&debug, Span::call_site());
         // return quote! {const DEBUG: &str = #debug;};
         let updates = self.clone().updates();
+        let reflect = self.reflect();
 
         let mod_name = self.mod_name();
-        let Self { docs, url, name, values } = self;
+        let Self {
+            docs,
+            url,
+            name,
+            values,
+        } = self;
         let update = Ident::new(&format!("{name}Update"), name.span());
         let fields = values.iter().map(|value| value.field(&update));
         let methods = values.iter().map(Value::method);
@@ -36,15 +189,16 @@ impl ToTokens for Device {
         } else {
             (None, None, None)
         };
-        let (updates_field, set_updates, define_updates) = if values.iter().any(Value::requires_subscribe) {
-            (
-                Some(quote! { updates: crate::Updates<#update>, }),
-                Some(quote! { updates, }),
-                Some(quote! { let updates = manager.subscribe(name.clone()); }),
-            )
-        } else {
-            (None, None, None)
-        };
+        let (updates_field, set_updates, define_updates) =
+            if values.iter().any(Value::requires_subscribe) {
+                (
+                    Some(quote! { updates: crate::Updates<#update>, }),
+                    Some(quote! { updates, }),
+                    Some(quote! { let updates = manager.subscribe(name.clone()); }),
+                )
+            } else {
+                (None, None, None)
+            };
         quote! {
         #[derive(Clone)]
         #(#[doc = #docs])*
@@ -57,21 +211,21 @@ impl ToTokens for Device {
             #(#fields),*
         }
 
-        #[::bon::bon]
+        #[bon]
         impl #name {
             #[builder]
             #[allow(missing_docs, reason = "This item is hidden since it's only intended for use in macros")]
             #[doc(hidden)]
             pub async fn create(name: String, manager: &mut crate::Manager) -> Result<Self, anyhow::Error> {
-                    <Self as ::control::device::Device>::new(manager, name).await
+                    <Self as Device>::new(manager, name).await
             }
         }
 
-            impl ::control::device::Device for #name {
-                type Args = String;
+            impl Device for #name {
+                type Args = ();
                 type Manager = crate::Manager;
 
-                async fn new(manager: &mut crate::Manager, name: String) -> Result<Self, anyhow::Error> {
+                async fn new_with_args(manager: &mut crate::Manager, name: String, _: ()) -> Result<Self, anyhow::Error> {
                     #define_publish
                     #define_updates
                     Ok(Self {
@@ -88,11 +242,11 @@ impl ToTokens for Device {
                     }
 
         #updates
+
+        #reflect
                 }
     }
-}
 
-impl Device {
     fn updates(self) -> impl ToTokens {
         let mod_name = self.mod_name();
         let name = self.name;
@@ -100,28 +254,45 @@ impl Device {
         let enum_fn = self.values.clone().into_iter().map(|value| {
             let name = value.field_name();
             let fn_name = Ident::new(&format!("deserialize_{name}"), name.span());
-            let Type::Enum { path, variants } = &value.value_type else {
-                return quote! {}
-            };
-            let ty = &value.value_type;
-            let variants = variants.iter().map(|Variant { zigbee, rust }| {
-                quote! {
-                            #zigbee => Ok(Some(#path::#rust))
+            match &value.value_type {
+                Type::Enum { path, variants } => {
+                    let ty = &value.value_type;
+                    let variants = variants.iter().map(|Variant { zigbee, rust }| {
+                        quote! {
+                            Some(#zigbee) => Some(#path::#rust)
                         }
-            });
-            quote! {
-                pub(super) fn #fn_name<'de, D>(deserializer: D) -> Result<Option<#ty>, D::Error> where D: ::serde::Deserializer<'de> {
+                    });
+                    quote! {
+                pub(super) fn #fn_name<'de, D>(deserializer: D) -> Result<Option<#ty>, D::Error> where D: Deserializer<'de> {
                     use serde::de::Error;
-                    match <String as ::serde::Deserialize>::deserialize(deserializer)?.as_str() {
+                    Ok(match <Option<String> as Deserialize>::deserialize(deserializer)?.as_deref() {
                         #(#variants,)*
-                        unknown => Err(D::Error::custom(format!("unknown value for {}: {}", stringify!(#name), unknown)))
-                    }
+                        Some(unknown) => return Err(D::Error::custom(format!("unknown value for {}: {}", stringify!(#name), unknown))),
+                        None => None
+                    })
                 }
+            }
+                }
+                Type::Bool(Some([false_value, true_value])) => {
+                    let ty = &value.value_type;
+                    quote! {
+                pub(super) fn #fn_name<'de, D>(deserializer: D) -> Result<Option<#ty>, D::Error> where D: Deserializer<'de> {
+                    use serde::de::Error;
+                    Ok(match <Option<String> as Deserialize>::deserialize(deserializer)?.as_deref() {
+                        Some(#false_value) => Some(false),
+                        Some(#true_value) => Some(true),
+                        Some(unknown) => return Err(D::Error::custom(format!("unknown value for {}: {}", stringify!(#name), unknown))),
+                        None => None
+                    })
+                }
+            }
+                }
+                Type::Number { .. } | Type::Bool(None) => quote! {}
             }
         });
         let fields = self.values.clone().into_iter().map(|value| {
             let name = value.field_name();
-            let attr = if let Type::Enum { .. } = &value.value_type {
+            let attr = if let Type::Enum { .. } | Type::Bool(Some(_)) = &value.value_type {
                 let deserialize_with =
                     LitStr::new(&format!("{mod_name}::deserialize_{name}"), name.span());
                 quote! {
@@ -136,7 +307,7 @@ impl Device {
                 #attr
                 #(#[doc = #docs])*
                 ///
-                /// Will be None only if the value was not included in the received update
+                ///Will be None only if the value was not included in the received update
                 pub #name: Option<#ty>
             }
         });
@@ -149,8 +320,10 @@ impl Device {
                 }
             }
         });
-        let convert_fn = self.values.into_iter().map(|value| {
-            match &value.value_type {
+        let convert_fn = self
+            .values
+            .into_iter()
+            .map(|value| match &value.value_type {
                 Type::Enum { path, variants } => {
                     let variants = variants.iter().map(|Variant { zigbee, rust }| {
                         quote! {
@@ -166,11 +339,22 @@ impl Device {
                         }
                     }
                 }
-                _ => quote! {}
-            }
-        });
+                Type::Bool(Some([false_str, true_str])) => {
+                    let name = value.convert_ident();
+                    quote! {
+                        pub(super) fn #name(value: bool) -> String {
+                            if value {
+                                #true_str
+                            } else {
+                                #false_str
+                            }.to_string()
+                        }
+                    }
+                }
+                Type::Number { .. } | Type::Bool(None) => quote! {},
+            });
         quote! {
-            #[derive(::serde::Deserialize, Clone)]
+            #[derive(Deserialize, Clone)]
             #[doc = concat!("An update from a ", stringify!(#name), " device")]
             pub struct #update {
                 #(#fields),*
@@ -182,7 +366,7 @@ impl Device {
 
             impl #name {
                 /// Returns a stream of updates as they are received from the device
-                pub fn updates(&self) -> impl ::futures::Stream<Item = #update> {
+                pub fn updates(&self) -> impl Stream<Item = #update> {
                     self.updates.subscribe()
                 }
             }
@@ -201,6 +385,153 @@ impl Device {
     fn mod_name(&self) -> Ident {
         let name = &self.name;
         Ident::new(&format!("_{name}"), name.span())
+    }
+
+    pub(crate) fn reflect(&self) -> TokenStream {
+        let info = {
+            let fields = self.values.iter().map(|value| {
+                let name = value.field_name().to_string();
+                let allow_subscribe = value.mode.allow_subscribe();
+                let allow_get = value.mode.allow_get();
+                let allow_set = value.mode.allow_set();
+                let allow_toggle = value.mode.allow_toggle();
+                let value_type = &value.value_type;
+                quote! {
+                    Field {
+                        name: #name.to_string(),
+                        allow_subscribe: #allow_subscribe,
+                        allow_get: #allow_get,
+                        allow_set: #allow_set,
+                        allow_toggle: #allow_toggle,
+                        value_type: ValueType::from_type::<#value_type>(),
+                    }
+                }
+            });
+            quote! {
+                        fn info(&self) -> DeviceInfo {
+                DeviceInfo {
+                    name: self.name.to_owned(),
+                    fields: vec![
+                        #(#fields,)*
+                    ],
+                }
+            }
+                    }
+        };
+        let subscribe = {
+            let fields = self.values.iter().map(|value| {
+                let name = value.field_name();
+                let block = if value.mode.allow_subscribe() {
+                    quote! { Ok(Box::pin(self.#name.subscribe().map(Value::from))) }
+                } else {
+                    unsupported_op!(Subscribe)
+                };
+
+                let name = name.to_string();
+                quote! { #name => #block }
+            });
+            quote! {
+            fn subscribe(&self, field: &str) -> Result<BoxStream<'_, Value>, Error> {
+                    use Sensor;
+                    use StreamExt;
+                match field {
+                    #(#fields,)*
+                    _ => Err(Error::FieldNotFound {
+                        device: self.name.to_owned(),
+                        field: field.to_owned(),
+                    })
+                }
+            }
+                    }
+        };
+        let get = {
+            let fields = self.values.iter().map(|value| {
+                let name = value.field_name();
+                let block = if value.mode.allow_get() {
+                    quote! { Ok(Box::pin(self.#name.get().map(|result| result.map(Value::from)))) }
+                } else {
+                    unsupported_op!(Get)
+                };
+                let name = name.to_string();
+                quote! { #name => #block }
+            });
+            quote! {
+            fn get(&self, field: &str) -> Result<BoxFuture<'_, anyhow::Result<Value>>, Error> {
+                use ReadValue;
+                use FutureExt;
+                match field {
+                    #(#fields,)*
+                    _ => Err(Error::FieldNotFound {
+                        device: self.name.to_owned(),
+                        field: field.to_owned(),
+                    })
+                }
+            }
+                    }
+        };
+        let set = {
+            let fields = self.values.iter().map(|value| {
+                let name = value.field_name();
+                let block = if value.mode.allow_set() {
+                    quote! {
+                        {
+                            let value = value.try_into()?;
+                            Ok(Box::pin(self.#name.set(value)))
+                        }
+                    }
+                } else {
+                    unsupported_op!(Set)
+                };
+                let name = name.to_string();
+                quote! { #name => #block }
+            });
+            quote! {
+            fn set(&self, field: &str, value: Value) -> Result<BoxFuture<'_, anyhow::Result<()>>, SetError> {
+                use WriteValue;
+                match field {
+                    #(#fields,)*
+                    _ => Err(Error::FieldNotFound {
+                        device: self.name.to_owned(),
+                        field: field.to_owned(),
+                    }.into())
+                }
+            }
+                    }
+        };
+        let toggle = {
+            let fields = self.values.iter().map(|value| {
+                let name = value.field_name();
+                let block = if value.mode.allow_toggle() {
+                    quote! { Ok(self.#name.toggle()) }
+                } else {
+                    unsupported_op!(Toggle)
+                };
+                let name = name.to_string();
+                quote! { #name => #block }
+            });
+            quote! {
+            fn toggle(&self, field: &str) -> Result<futures::future::BoxFuture<'_, anyhow::Result<()>>, Error> {
+                use ToggleValue;
+                match field {
+                    #(#fields,)*
+                    _ => Err(Error::FieldNotFound {
+                        device: self.name.to_owned(),
+                        field: field.to_owned(),
+                    })
+                }
+            }
+                    }
+        };
+        let name = &self.name;
+        quote! {
+        impl ReflectDevice for #name {
+                        #info
+                        #subscribe
+                        #get
+                        #set
+                        #toggle
+        }
+                }
     }
 }
 
@@ -237,22 +568,19 @@ impl Value {
         let attr = &self.attribute_name;
         let getter = self.field_name();
         let from_device = quote! {
-                    #update::#getter
-                };
+            #update::#getter
+        };
         let (new, to_device) = match &self.value_type {
-            Type::Enum { .. } => {
-                    let convert = self.convert_ident();
+            Type::Enum { .. } | Type::Bool(Some(_)) => {
+                let convert = self.convert_ident();
                 (
                     quote! { new_mapped },
                     Some(quote! {
                         #mod_name::#convert
-                    })
-                    )
-            }
-            Type::Number { .. } | Type::Bool => (
-                quote! { new },
-                None
+                    }),
                 )
+            }
+            Type::Number { .. } | Type::Bool(None) => (quote! { new }, None),
         };
         match self.mode.sub_pub() {
             SubPub::SubOnly => {
@@ -285,12 +613,12 @@ impl Value {
 
     fn zigbee_type(&self) -> TokenStream {
         match &self.value_type {
-            Type::Enum { .. } => {
+            Type::Enum { .. } | Type::Bool(Some(_)) => {
                 quote! {
                     String
                 }
             }
-            Type::Number { .. } | Type::Bool => self.value_type.to_token_stream(),
+            Type::Number { .. } | Type::Bool(None) => self.value_type.to_token_stream(),
         }
     }
 
@@ -298,25 +626,25 @@ impl Value {
         let value = &self.value_type;
         match self.mode {
             Mode::Stream => quote! {
-                ::control::Sensor<Item = #value> + Sync
+                Sensor<Item = #value> + Sync
             },
             Mode::StreamGet => quote! {
-                ::control::Sensor<Item = #value> + ::control::ReadValue<Item = #value> + Sync
+                Sensor<Item = #value> + ReadValue<Item = #value> + Sync
             },
             Mode::Set => quote! {
-                ::control::WriteValue<Item = #value> + Sync
+                WriteValue<Item = #value> + Sync
             },
             Mode::StreamGetSet => quote! {
-                ::control::Sensor<Item = #value> + ::control::ReadValue<Item = #value> + ::control::WriteValue<Item = #value> + Sync
+                Sensor<Item = #value> + ReadValue<Item = #value> + WriteValue<Item = #value> + Sync
             },
             Mode::SetToggle => quote! {
-                ::control::ToggleValue<Item = #value> + Sync
+                ToggleValue<Item = #value> + Sync
             },
             Mode::StreamGetSetToggle => quote! {
-                ::control::Sensor<Item = #value> + ::control::ReadValue<Item = #value> + ::control::ToggleValue<Item = #value> + Sync
+                Sensor<Item = #value> + ReadValue<Item = #value> + ToggleValue<Item = #value> + Sync
             },
             Mode::StreamSet => quote! {
-                ::control::Sensor<Item = #value> + ::control::WriteValue<Item = #value> + Sync
+                Sensor<Item = #value> + WriteValue<Item = #value> + Sync
             },
         }
     }
@@ -402,7 +730,7 @@ impl ToTokens for Type {
                     }
                 }
             }
-            Type::Bool => {
+            Type::Bool(_) => {
                 quote! {bool}
             }
         }

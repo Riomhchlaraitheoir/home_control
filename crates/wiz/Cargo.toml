@@ -15,8 +15,8 @@ light_ranged_integers = { workspace = true }
 control.workspace = true
 bon = { workspace = true }
 sync-cell = { workspace = true }
-anyhow = "1.0.100"
-tracing = "0.1.41"
+anyhow = { workspace = true }
+tracing = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["full"] }

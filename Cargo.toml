@@ -16,6 +16,17 @@ expect_used = "warn"
 panic = "warn"
 
 [workspace.dependencies]
+wiz.path = "crates/wiz"
+zigbee.path = "crates/zigbee"
+web.path = "crates/web"
+arp.path = "crates/arp"
+macros.path = "crates/macros"
+macros-impl.path = "crates/macros-impl"
+metric.path = "crates/metric"
+control.path = "crates/control"
+testing.path = "crates/testing"
+api.path = "crates/api"
+
 rumqttc = "0.25.0"
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.145"
@@ -26,20 +37,13 @@ futures = "0.3.31"
 light_ranged_integers = { git = "https://gitlab.com/MassiminoilTrace/light-ranged-integers.git", features = ["serde"] }
 async-executor = "1.13.3"
 async-timer = "1.0.0-beta.15"
-control = { path = "crates/control" }
 derive_more = { version = "2.0.1", features = ["full"] }
 influxdb = "0.7.2"
-macros = { path = "crates/macros" }
-macros-impl = { path = "crates/macros-impl" }
-metric = { path = "crates/metric" }
 proc-macro2 = "1.0.101"
 quote = "1.0.41"
 simple-log = "2.4.0"
 syn = { version = "2.0.106", features = ["full", "extra-traits"] }
 tracing = "0.1.41"
-wiz.path = "crates/wiz"
-zigbee.path = "crates/zigbee"
-arp.path = "crates/arp"
 pnet = "0.35.0"
 bon = "3.8.1"
 tokio-util = "0.7.17"
@@ -51,7 +55,8 @@ log = "0.4.28"
 pin-project = "1.1.10"
 rumqttd = "0.20.0"
 sync-cell = "0.2.0"
-testing = { path = "crates/testing" }
+anyhow = "1.0.100"
+axum = { version = "0.8.7", features = ["macros", "tokio", "json"] }
 
 [package]
 name = "home_control"
@@ -71,16 +76,13 @@ zigbee = { workspace = true, optional = true }
 wiz = { workspace = true, optional = true }
 arp = { workspace = true, optional = true }
 macros = { workspace = true }
-futures = { workspace = true }
-async-task = { workspace = true }
-pin-project = { workspace = true }
 tracing = { workspace = true }
-flume = { workspace = true }
 log = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
-tokio-util = { workspace = true }
 async-scoped = { workspace = true, features = ["use-tokio"] }
 light_ranged_integers = { workspace = true }
+web = { workspace = true, optional = true }
+api = { workspace = true, optional = true }
 
 [dev-dependencies]
 rumqttc = { workspace = true }

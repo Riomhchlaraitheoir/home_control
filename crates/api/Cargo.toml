@@ -1,0 +1,16 @@
+[package]
+name = "api"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+bon.workspace = true
+control.workspace = true
+axum.workspace = true
+derive_more.workspace = true
+serde.workspace = true
+anyhow.workspace = true
+futures.workspace = true
+
+[lints]
+workspace = true

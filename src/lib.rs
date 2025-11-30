@@ -20,3 +20,14 @@ pub mod wiz {
 pub mod arp {
     pub use ::arp::*;
 }
+
+#[cfg(feature = "web")]
+#[doc = include_str!("../crates/web/README.md")]
+pub mod web {
+    pub use ::web::*;
+    #[cfg(feature = "api")]
+    #[doc = include_str!("../crates/api/README.md")]
+    pub mod api {
+        pub use ::api::*;
+    }
+}
