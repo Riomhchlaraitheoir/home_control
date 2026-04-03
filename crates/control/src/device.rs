@@ -2,6 +2,7 @@
 
 use std::fmt::Debug;
 use thiserror::Error;
+use reflect::DeviceInfo;
 use crate::device_manager::{DeviceManager, DeviceManagerNotFound};
 use crate::{reflect, Manager};
 
@@ -17,7 +18,6 @@ pub trait DeviceSet: Sized + IntoIterator<Item=Box<dyn reflect::Device>> {
     async fn new(manager: &mut Manager) -> Result<Self, CreateDeviceError>;
 }
 
-
 /// A Device which can be used in the home_control system
 pub trait Device: Sized {
     /// Creation args needed to create this device
@@ -25,12 +25,15 @@ pub trait Device: Sized {
     /// The manager type that this device needs
     type Manager: DeviceManager;
 
+    /// Get the info for this device
+    fn info(&self) -> &DeviceInfo;
+
     /// creates the device with the given arguments
-    async fn new_with_args(manager: &mut Self::Manager, name: String, args: Self::Args) -> anyhow::Result<Self>;
+    async fn new_with_args(manager: &mut Self::Manager, info: DeviceInfo, args: Self::Args) -> anyhow::Result<Self>;
 
     /// creates the device, only available if the device does not require arguments
-    async fn new(manager: &mut Self::Manager, name: String) -> anyhow::Result<Self> where Self: Device<Args = ()> {
-        Self::new_with_args(manager, name, ()).await
+    async fn new(manager: &mut Self::Manager, info: DeviceInfo) -> anyhow::Result<Self> where Self: Device<Args = ()> {
+        Self::new_with_args(manager, info, ()).await
     }
 }
 

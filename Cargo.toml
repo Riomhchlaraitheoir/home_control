@@ -1,5 +1,10 @@
 [workspace]
-members = ["crates/*"]
+members = [
+    "crates/*",
+]
+exclude = [
+    "crates/testing",
+]
 resolver = "3"
 
 [workspace.package]
@@ -25,12 +30,13 @@ macros-impl.path = "crates/macros-impl"
 metric.path = "crates/metric"
 control.path = "crates/control"
 testing.path = "crates/testing"
-api.path = "crates/api"
+api-server.path = "crates/api-server"
+reflect.path = "crates/reflect"
 
 rumqttc = "0.25.0"
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.145"
-tokio = { version = "1.47.1", features = ["rt-multi-thread", "sync", "macros"] }
+tokio = { version = "1.47.1", features = ["rt-multi-thread", "sync", "macros", "signal"] }
 tokio-stream = { version = "0.1.17", features = ["sync"] }
 thiserror = "2.0.17"
 futures = "0.3.31"
@@ -40,23 +46,21 @@ async-timer = "1.0.0-beta.15"
 derive_more = { version = "2.0.1", features = ["full"] }
 influxdb = "0.7.2"
 proc-macro2 = "1.0.101"
-quote = "1.0.41"
+quote = "1.0.42"
 simple-log = "2.4.0"
-syn = { version = "2.0.106", features = ["full", "extra-traits"] }
+syn = { version = "2.0.114", features = ["full", "extra-traits"] }
 tracing = "0.1.41"
 pnet = "0.35.0"
 bon = "3.8.1"
 tokio-util = "0.7.17"
-async-scoped = "0.9.0"
-async-task = "4.7.1"
+async-scoped = { version = "0.9.0", features = ["use-tokio"] }
 convert_case = "0.9.0"
-flume = "0.11.1"
 log = "0.4.28"
 pin-project = "1.1.10"
 rumqttd = "0.20.0"
-sync-cell = "0.2.0"
 anyhow = "1.0.100"
 axum = { version = "0.8.7", features = ["macros", "tokio", "json"] }
+trait-rpc = { git = "https://github.com/Riomhchlaraitheoir/trait-rpc.git", rev = "0c33e3d" }
 
 [package]
 name = "home_control"
@@ -69,6 +73,11 @@ workspace = true
 [features]
 default = []
 log = ["tracing/log"]
+zigbee = ["dep:zigbee"]
+wiz = ["dep:wiz"]
+arp = ["dep:arp"]
+web = ["dep:web"]
+api = ["dep:api-server"]
 
 [dependencies]
 control = { workspace = true }
@@ -82,7 +91,7 @@ tokio = { workspace = true, features = ["full"] }
 async-scoped = { workspace = true, features = ["use-tokio"] }
 light_ranged_integers = { workspace = true }
 web = { workspace = true, optional = true }
-api = { workspace = true, optional = true }
+api-server = { workspace = true, optional = true }
 
 [dev-dependencies]
 rumqttc = { workspace = true }
@@ -90,7 +99,8 @@ log = { workspace = true }
 simple-log = { workspace = true }
 tokio = { workspace = true }
 tokio-stream = { workspace = true }
-testing = { workspace = true }
+#testing = { workspace = true }
+derive_more.workspace = true
 
 [[example]]
 name = "button_presses"
@@ -107,3 +117,15 @@ required-features = ["zigbee", "arp", "wiz"]
 [[test]]
 name = "simple_automation"
 required-features = ["zigbee"]
+
+[[test]]
+name = "http_server"
+required-features = ["web"]
+
+# Defines a size-optimized profile for the WASM bundle in release mode
+[profile.wasm-release]
+inherits = "release"
+opt-level = 'z'
+lto = true
+codegen-units = 1
+panic = "abort"

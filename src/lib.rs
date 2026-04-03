@@ -5,29 +5,19 @@ pub use light_ranged_integers;
 pub use macros::DeviceSet;
 
 #[cfg(feature = "zigbee")]
-#[doc = include_str!("../crates/zigbee/README.md")]
-pub mod zigbee {
-    pub use ::zigbee::*;
-}
+pub use zigbee;
 
 #[cfg(feature = "wiz")]
 #[doc = include_str!("../crates/wiz/README.md")]
-pub mod wiz {
-    pub use ::wiz::*;
-}
+pub use wiz;
+
 #[cfg(feature = "arp")]
-#[doc = include_str!("../crates/arp/README.md")]
-pub mod arp {
-    pub use ::arp::*;
-}
+pub use arp;
 
 #[cfg(feature = "web")]
 #[doc = include_str!("../crates/web/README.md")]
 pub mod web {
     pub use ::web::*;
-    #[cfg(feature = "api")]
-    #[doc = include_str!("../crates/api/README.md")]
-    pub mod api {
-        pub use ::api::*;
-    }
+    #[cfg(feature = "web-ui")]
+    pub use web_ui;
 }

@@ -1,5 +1,5 @@
 use derive_more::Display;
-use control::enum_value;
+use control::reflect::enum_value;
 use macros::zigbee_device;
 use metric::temperature::TemperatureUnit;
 

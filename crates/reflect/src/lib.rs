@@ -2,12 +2,27 @@
 
 pub mod value;
 
+use std::collections::HashMap;
 use std::convert::Infallible;
 use derive_more::Display;
 use futures::future::BoxFuture;
 use futures::stream::BoxStream;
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
-use crate::reflect::value::{Value, ValueReadError, ValueType};
+use value::{Value, ValueReadError, ValueType};
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+/// Basic information regarding a device
+pub struct DeviceInfo {
+    /// The device's internal ID string
+    pub id: String,
+    /// The device's display name
+    pub name: String,
+    /// A description of the device
+    pub description: Option<String>,
+    /// Device tags
+    pub tags: HashMap<String, String>,
+}
 
 /// A Device which supports dynamic access
 pub trait Device: Send + Sync {
@@ -17,6 +32,8 @@ pub trait Device: Send + Sync {
     }
     /// Return the information for this device
     fn info(&self) -> DeviceInfo;
+    /// Return the fields for this device
+    fn fields(&self) -> Vec<Field>;
     /// subscribe to updates from the given field
     fn subscribe(&self, field: &str) -> Result<BoxStream<'_, Value>, Error>;
 
@@ -32,31 +49,33 @@ pub trait Device: Send + Sync {
 
 impl dyn Device {}
 
-/// A device's info
-pub struct DeviceInfo {
-    /// The name of the device
-    pub name: String,
-    /// The device's fields
-    pub fields: Vec<Field>,
-}
-
+#[derive(Serialize, Deserialize, Clone)]
 /// A device field specification
 pub struct Field {
     /// The field's name
     pub name: String,
-    /// Does this field support subscribe operations
-    pub allow_subscribe: bool,
-    /// Does this field support get operations
-    pub allow_get: bool,
-    /// Does this field support set operations
-    pub allow_set: bool,
-    /// Does this field support toggle operations
-    pub allow_toggle: bool,
+    /// A description of the field
+    pub description: String,
+    /// Detail which operations are supported by this field
+    pub operations: Operations,
     /// The value type of this field
     pub value_type: ValueType,
 }
 
-#[derive(Debug, Error)]
+/// the set of operations supported by a given field
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct Operations {
+    /// Supports subscribe operations
+    pub subscribe: bool,
+    /// Supports get operations
+    pub get: bool,
+    /// Supports set operations
+    pub set: bool,
+    /// Supports toggle operations
+    pub toggle: bool,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Error)]
 /// An error which can occur when accessing a device dynamically
 #[allow(missing_docs)]
 pub enum Error {
@@ -76,7 +95,7 @@ pub enum Error {
 }
 
 /// An operation
-#[derive(Debug, Display)]
+#[derive(serde::Serialize, serde::Deserialize, Debug, Display, Copy, Clone)]
 #[allow(missing_docs)]
 pub enum Operation {
     #[display("subscribe")]
@@ -89,7 +108,7 @@ pub enum Operation {
     Toggle
 }
 
-#[derive(Debug, Error)]
+#[derive(Debug, Error, Serialize,Deserialize, Clone)]
 /// An error that can happen when trying to set a field dynamically
 pub enum SetError {
     /// A [Error]

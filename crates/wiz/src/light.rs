@@ -1,21 +1,21 @@
 //! Wiz lights
 
-use crate::{Error, Response, udp_request};
+use crate::{udp_request, Error, Response};
+use anyhow::Context;
 use bon::bon;
-use control::device::Device;
+use control::device::{Device};
 use control::reflect;
 use control::reflect::value::{Value, ValueType};
-use control::reflect::{DeviceInfo, Field, Operation, SetError};
-use futures::FutureExt;
+use control::reflect::{DeviceInfo, Field, Operation, Operations, SetError};
 use futures::future::BoxFuture;
 use futures::stream::BoxStream;
-use light_ranged_integers::{RangedU8, RangedU16};
+use futures::FutureExt;
+use light_ranged_integers::{RangedU16, RangedU8};
 use serde::de::Error as _;
 use serde::{Deserialize, Deserializer};
 use serde_json::json;
 use std::net::Ipv4Addr;
-use std::sync::{Mutex, PoisonError};
-use anyhow::Context;
+use tokio::sync::Mutex;
 
 /// A Wiz Light
 #[derive(Debug)]
@@ -23,24 +23,28 @@ pub struct Light
 where
     Self: Sync,
 {
-    name: String,
+    info: DeviceInfo,
     addr: Ipv4Addr,
     state: Mutex<State>,
 }
 
 impl Light {
     /// Create a new instance of `Light` and verify that it can be reached
-    pub async fn verify_new(name: String, addr: Ipv4Addr) -> Result<Self, anyhow::Error> {
+    pub async fn verify_new(info: DeviceInfo, addr: Ipv4Addr) -> Result<Self, anyhow::Error> {
         let state = udp_request(addr, json! {{"method": "getPilot", "params": {}}})
             .await?
             .result;
         let state = Mutex::new(state);
-        Ok(Self { name, addr, state })
+        Ok(Self {
+            info,
+            addr,
+            state,
+        })
     }
 
     /// update the tracked state and request to light to change state to match
     pub async fn update_state(&self, f: impl FnOnce(&mut State)) -> Result<(), Error> {
-        let mut state = { *self.state.lock().unwrap_or_else(PoisonError::into_inner) };
+        let mut state = { *self.state.lock().await };
         f(&mut state);
         let msg = if state.state {
             json! {{"method":"setPilot","params":{"dimming":state.brightness,"temp":state.temp,"state":true}}}
@@ -48,11 +52,11 @@ impl Light {
             json! {{"method":"setPilot","params":{"state":false}}}
         };
         let _: Response<Success> = udp_request(self.addr, msg).await?;
-        *self.state.lock().unwrap_or_else(PoisonError::into_inner) = state;
+        *self.state.lock().await = state;
         Ok(())
     }
 
-    /// Toogle the light based on the current known state of the light, this state may be outdated,
+    /// Toggle the light based on the current known state of the light, this state may be outdated,
     /// see [last_state](Self::last_state) for more info.
     ///
     /// To update the state to an accurate state before toggling, call [get_state](Self::get_state) first
@@ -81,8 +85,8 @@ impl Light {
 
     /// Returns the last observed state of the light, this is not guaranteed to be accurate since
     /// the light can change state without notice if a command is sent from another source
-    pub fn last_state(&self) -> State {
-        *self.state.lock().unwrap_or_else(PoisonError::into_inner)
+    pub async fn last_state(&self) -> State {
+        *self.state.lock().await
     }
 
     /// retrieve the current state from the light
@@ -90,7 +94,7 @@ impl Light {
         let state = udp_request(self.addr, json! {{"method": "getPilot", "params": {}}})
             .await?
             .result;
-        *self.state.lock().unwrap_or_else(PoisonError::into_inner) = state;
+        *self.state.lock().await = state;
         Ok(state)
     }
 }
@@ -143,8 +147,12 @@ impl Device for Light {
     type Args = Ipv4Addr;
     type Manager = ();
 
-    async fn new_with_args(_: &mut Self::Manager, name: String, ip: Ipv4Addr) -> Result<Self, anyhow::Error> {
-        Self::verify_new(name, ip).await
+    fn info(&self) -> &DeviceInfo {
+        &self.info
+    }
+
+    async fn new_with_args(_: &mut Self::Manager, info: DeviceInfo, ip: Ipv4Addr) -> Result<Self, anyhow::Error> {
+        Self::verify_new(info, ip).await
     }
 }
 
@@ -159,55 +167,65 @@ impl Light {
     #[allow(unused_variables, reason = "Cannot rename due to compatability issues")]
     pub async fn create(
         manager: &mut (),
-        name: String,
+        info: DeviceInfo,
         ip: Ipv4Addr,
     ) -> Result<Self, anyhow::Error> {
-        Self::new_with_args(manager, name, ip).await
+        Self::new_with_args(manager, info, ip).await
     }
 }
 
 impl reflect::Device for Light {
     fn info(&self) -> DeviceInfo {
-        DeviceInfo {
-            name: self.name.to_owned(),
-            fields: vec![
-                Field {
-                    name: "state".to_owned(),
-                    value_type: ValueType::from_type::<bool>(),
-                    allow_subscribe: false,
-                    allow_get: true,
-                    allow_set: true,
-                    allow_toggle: true,
-                },
-                Field {
-                    name: "temp".to_owned(),
-                    value_type: ValueType::from_type::<Option<RangedU16<1000, 12000>>>(),
-                    allow_subscribe: false,
-                    allow_get: true,
-                    allow_set: true,
-                    allow_toggle: true,
-                },
-                Field {
-                    name: "brightness".to_owned(),
-                    value_type: ValueType::from_type::<RangedU8<0, 100>>(),
-                    allow_subscribe: false,
-                    allow_get: true,
-                    allow_set: true,
-                    allow_toggle: true,
-                },
-            ],
-        }
+        self.info.clone()
+    }
+
+    fn fields(&self) -> Vec<Field> {
+        vec![
+            Field {
+                name: "state".to_owned(),
+                description: "is true if the light is on".to_string(),
+                value_type: ValueType::from_type::<bool>(),
+                operations: Operations {
+                    subscribe: false,
+                    get: true,
+                    set: true,
+                    toggle: true,
+                }
+            },
+            Field {
+                name: "temp".to_owned(),
+                description: "The light's colour temperature".to_string(),
+                value_type: ValueType::from_type::<Option<RangedU16<1000, 12000>>>(),
+                operations: Operations {
+                    subscribe: false,
+                    get: true,
+                    set: true,
+                    toggle: true,
+                }
+            },
+            Field {
+                name: "brightness".to_owned(),
+                description: "The light's brightness".to_string(),
+                value_type: ValueType::from_type::<RangedU8<0, 100>>(),
+                operations: Operations {
+                    subscribe: false,
+                    get: true,
+                    set: true,
+                    toggle: true,
+                }
+            },
+        ]
     }
 
     fn subscribe(&self, field: &str) -> Result<BoxStream<'_, Value>, reflect::Error> {
         Err(match field {
             "state" | "temp" | "brightness" => reflect::Error::OperationNotSupported {
-                device: self.name.to_string(),
+                device: self.info.name.to_string(),
                 field: field.to_string(),
                 operation: Operation::Subscribe,
             },
             unknown => reflect::Error::FieldNotFound {
-                device: self.name.to_string(),
+                device: self.info.name.to_string(),
                 field: unknown.to_string(),
             },
         })
@@ -237,7 +255,7 @@ impl reflect::Device for Light {
                     }),
             )),
             unknown => Err(reflect::Error::FieldNotFound {
-                device: self.name.to_string(),
+                device: self.info.name.to_string(),
                 field: unknown.to_string(),
             }),
         }
@@ -271,7 +289,7 @@ impl reflect::Device for Light {
                 ))
             },
             unknown => Err(reflect::Error::FieldNotFound {
-                device: self.name.to_string(),
+                device: self.info.name.to_string(),
                 field: unknown.to_string(),
             }.into()),
         }
@@ -287,13 +305,13 @@ impl reflect::Device for Light {
             },
             "temp" | "brightness" => {
                 Err(reflect::Error::OperationNotSupported {
-                    device: self.name.to_string(),
+                    device: self.info.name.to_string(),
                     field: field.to_string(),
                     operation: Operation::Toggle,
                 })
             },
             unknown => Err(reflect::Error::FieldNotFound {
-                device: self.name.to_string(),
+                device: self.info.name.to_string(),
                 field: unknown.to_string(),
             }),
         }

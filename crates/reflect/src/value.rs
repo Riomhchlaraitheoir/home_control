@@ -32,15 +32,15 @@ pub enum Value {
 #[macro_export]
 macro_rules! enum_value {
     ($ty:ty, $($s:literal => $v:ident),+) => {
-impl $crate::reflect::value::AsValueType for $ty {
-    fn value_type() -> $crate::reflect::value::ValueType {
-        $crate::reflect::value::ValueType::String {
+impl $crate::value::AsValueType for $ty {
+    fn value_type() -> $crate::value::ValueType {
+        $crate::value::ValueType::String {
             values: Some(vec![$($s.to_string()),+]),
         }
     }
 }
 
-impl From<$ty> for $crate::reflect::value::Value {
+impl From<$ty> for $crate::value::Value {
     fn from(enum_value: $ty) -> Self {
         Self::String(match enum_value {
             $(<$ty>::$v => $s),+
@@ -48,12 +48,12 @@ impl From<$ty> for $crate::reflect::value::Value {
     }
 }
 
-impl TryFrom<$crate::reflect::value::Value> for $ty {
-    type Error = $crate::reflect::value::ValueReadError;
-    fn try_from(value: $crate::reflect::value::Value) -> Result<Self, Self::Error> {
-        let $crate::reflect::value::Value::String(value) = value else {
-            return Err($crate::reflect::value::ValueReadError::WrongType {
-                expected_type: $crate::reflect::value::ValueType::String {
+impl TryFrom<$crate::value::Value> for $ty {
+    type Error = $crate::value::ValueReadError;
+    fn try_from(value: $crate::value::Value) -> Result<Self, Self::Error> {
+        let $crate::value::Value::String(value) = value else {
+            return Err($crate::value::ValueReadError::WrongType {
+                expected_type: $crate::value::ValueType::String {
                     values: Some(vec![$($s.to_string()),+]),
                 },
                 actual_type: value.value_type(),
@@ -61,7 +61,7 @@ impl TryFrom<$crate::reflect::value::Value> for $ty {
         };
         match value.as_str() {
             $($s => Ok(<$ty>::$v),)+
-            unknown => Err($crate::reflect::value::ValueReadError::IllegalEnum {
+            unknown => Err($crate::value::ValueReadError::IllegalEnum {
                 invalid: unknown.to_string(),
                 valid: vec![$($s.to_string()),+],
             })
@@ -87,7 +87,7 @@ impl Value {
 
 /// A value type
 #[allow(missing_docs)]
-#[derive(Debug, Clone, PartialEq, Serialize, Display)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Display)]
 #[serde(tag = "type")]
 pub enum ValueType {
     #[display("bool")]
@@ -114,6 +114,44 @@ impl ValueType {
     /// Get the ValueType from the given type
     pub fn from_type<T: AsValueType>() -> Self {
         T::value_type()
+    }
+
+    /// Validate the given value as acceptable for this type
+    pub fn validate(&self, other: &Value) -> Result<(), ValueReadError> {
+
+        match (self, other) {
+            (Self::Bool, Value::Bool(_)) => Ok(()),
+            (Self::Int(range), Value::Int(value)) => {
+                if range.contains(value) {
+                    Ok(())
+                } else {
+                    Err(ValueReadError::IntNotInRange {
+                        value: *value,
+                        range: *range,
+                    })
+                }
+            },
+            (Self::Float, Value::Float(_)) => Ok(()),
+            (Self::String { values: Some(values) }, Value::String(value)) => {
+                if values.contains(value) {
+                    Ok(())
+                } else {
+                    Err(ValueReadError::IllegalEnum {
+                        invalid: value.to_string(),
+                        valid: values.clone(),
+                    })
+                }
+            },
+            (Self::String { values: None }, Value::String(_)) => Ok(()),
+            (Self::Optional(_), Value::None) => Ok(()),
+            (Self::Optional(value_type), other) => value_type.validate(other),
+            (value_type, value) => {
+                Err(ValueReadError::WrongType {
+                    expected_type: value_type.clone(),
+                    actual_type: value.value_type(),
+                })
+            },
+        }
     }
 }
 
@@ -165,7 +203,7 @@ where
     }
 }
 
-#[derive(Debug, Error, Serialize)]
+#[derive(Debug, Error, Serialize, Deserialize, Clone)]
 /// An error in converting a [Value] to the correct type for a certain field
 pub enum ValueReadError {
     /// the provided value was the wrong type
@@ -192,21 +230,15 @@ pub enum ValueReadError {
         /// The expected Range
         range: Range<i64>,
     },
-    #[error("Float not in expected range, value: {value}, range: {range}")]
-    /// The provided float was not in range
-    FloatNotInRange {
-        /// The provided float
-        value: f64,
-        /// The expected Range
-        range: Range<f64>,
-    }
 }
 
 /// Custom range type to describe any kind of range in a single concrete type
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Range<T> {
-    start: RangeBound<T>,
-    end: RangeBound<T>
+    /// start of the range
+    pub start: RangeBound<T>,
+    /// end of the range
+    pub end: RangeBound<T>
 }
 
 impl<T: Display> Display for Range<T> {
@@ -226,9 +258,26 @@ impl<T: Display> Display for Range<T> {
     }
 }
 
+impl<T: Ord> Range<T> {
+    /// Returns true if the given value is within this range
+    pub fn contains(&self, value: &T) -> bool {
+        let start = match &self.start {
+            RangeBound::Included(start) => value >= start,
+            RangeBound::Excluded(start) => value > start,
+            RangeBound::Open => true
+        };
+        let end = match &self.end {
+            RangeBound::Included(end) => value <= end,
+            RangeBound::Excluded(end) => value < end,
+            RangeBound::Open => true
+        };
+        start && end
+    }
+}
+
 /// A bound of a range
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize)]
-#[serde(tag = "type", content = "value")]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "type", content = "bound")]
 pub enum RangeBound<T> {
     /// an inclusive bound
     Included(T),

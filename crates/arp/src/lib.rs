@@ -23,7 +23,7 @@ use control::device::Device;
 use control::device_manager::DeviceManager;
 use control::reflect;
 use control::reflect::value::{Value, ValueType};
-use control::reflect::{DeviceInfo, Field, Operation, SetError};
+use control::reflect::{DeviceInfo, Field, Operation, Operations, SetError};
 pub use pnet::util::MacAddr;
 use thiserror::Error;
 use tokio::spawn;
@@ -95,7 +95,7 @@ pub struct ArpScanner {
 /// An ARP device, this represents a watched device and exposes some methods for getting current
 /// status and listening for changes
 pub struct ArpDevice {
-    name: String,
+    info: DeviceInfo,
     receiver: Receiver<Option<Ipv4Addr>>,
 }
 
@@ -109,7 +109,7 @@ impl ArpDevice {
     #[builder]
     pub async fn create(
         manager: &mut ArpManager,
-        name: String,
+        info: DeviceInfo,
         /// The name of the network interface to use
         interface_name: Option<String>,
         /// the length of time to wait before deeming the device offline
@@ -123,9 +123,10 @@ impl ArpDevice {
         /// The device to scan for
         device: MacAddr,
     ) -> anyhow::Result<Self> {
+        let name = info.name.clone();
         Self::new_with_args(
             manager,
-            name.clone(),
+            info,
             NetworkScannerConfig {
                 name,
                 interface_name,
@@ -166,32 +167,39 @@ impl Device for ArpDevice {
     type Args = NetworkScannerConfig;
     type Manager = ArpManager;
 
+    fn info(&self) -> &DeviceInfo {
+        &self.info
+    }
+
     async fn new_with_args(
         manager: &mut Self::Manager,
-        name: String,
+        info: DeviceInfo,
         config: NetworkScannerConfig,
     ) -> anyhow::Result<Self> {
         let (scanner, receiver) = ArpScanner::new(config)?;
         manager.scanners.push(scanner);
-        Ok(ArpDevice { name, receiver })
+        Ok(ArpDevice { info, receiver })
     }
 }
 
 impl reflect::Device for ArpDevice {
     fn info(&self) -> DeviceInfo {
-        DeviceInfo {
-            name: self.name.clone(),
-            fields: vec![
-                Field {
-                    name: "detected".to_string(),
-                    allow_subscribe: true,
-                    allow_get: true,
-                    allow_set: false,
-                    allow_toggle: false,
-                    value_type: ValueType::Bool,
-                }
-            ],
-        }
+        self.info.clone()
+    }
+    fn fields(&self) -> Vec<Field> {
+        vec![
+            Field {
+                name: "detected".to_string(),
+                description: "This value is true whenever the given device is connected to the local network".to_string(),
+                operations: Operations {
+                    subscribe: true,
+                    get: true,
+                    set: false,
+                    toggle: false,
+                },
+                value_type: ValueType::Bool,
+            }
+        ]
     }
 
     fn subscribe(&self, field: &str) -> Result<BoxStream<'_, Value>, reflect::Error> {
@@ -199,7 +207,7 @@ impl reflect::Device for ArpDevice {
             Ok(Box::pin(self.online_changes().map(Value::from)))
         } else {
             Err(reflect::Error::FieldNotFound {
-                device: self.name.clone(),
+                device: self.info.name.clone(),
                 field: field.to_string(),
             })
         }
@@ -210,7 +218,7 @@ impl reflect::Device for ArpDevice {
             Ok(Box::pin(ready(Ok(self.online().into()))))
         } else {
             Err(reflect::Error::FieldNotFound {
-                device: self.name.clone(),
+                device: self.info.name.clone(),
                 field: field.to_string(),
             })
         }
@@ -219,13 +227,13 @@ impl reflect::Device for ArpDevice {
     fn set(&self, field: &str, _: Value) -> Result<BoxFuture<'_, anyhow::Result<()>>, SetError> {
         if field == "detected" {
             Err(reflect::Error::OperationNotSupported {
-                device: self.name.clone(),
+                device: self.info.name.clone(),
                 field: field.to_string(),
                 operation: Operation::Set,
             }.into())
         } else {
             Err(reflect::Error::FieldNotFound {
-                device: self.name.clone(),
+                device: self.info.name.clone(),
                 field: field.to_string(),
             }.into())
         }
@@ -234,13 +242,13 @@ impl reflect::Device for ArpDevice {
     fn toggle(&self, field: &str) -> Result<BoxFuture<'_, anyhow::Result<()>>, reflect::Error> {
         if field == "detected" {
             Err(reflect::Error::OperationNotSupported {
-                device: self.name.clone(),
+                device: self.info.name.clone(),
                 field: field.to_string(),
                 operation: Operation::Toggle,
             })
         } else {
             Err(reflect::Error::FieldNotFound {
-                device: self.name.clone(),
+                device: self.info.name.clone(),
                 field: field.to_string(),
             })
         }

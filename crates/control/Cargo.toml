@@ -22,6 +22,7 @@ async-scoped = { workspace = true}
 serde_json = { workspace = true }
 serde.workspace = true
 derive_more.workspace = true
+reflect.workspace = true
 
 [features]
 custom = []

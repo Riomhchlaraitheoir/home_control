@@ -1,7 +1,7 @@
 //! Temperature related metrics
 
 use derive_more::Display;
-use control::enum_value;
+use control::reflect::enum_value;
 
 /// A commonly used Temperature unit for human readability
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Display)]

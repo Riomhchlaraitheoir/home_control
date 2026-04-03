@@ -1,4 +1,4 @@
-use control::enum_value;
+use control::reflect::enum_value;
 use derive_more::Display;
 use macros::zigbee_device;
 

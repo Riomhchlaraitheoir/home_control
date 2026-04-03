@@ -1,0 +1,15 @@
+[package]
+name = "reflect"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+derive_more.workspace = true
+serde.workspace = true
+futures.workspace = true
+thiserror.workspace = true
+light_ranged_integers.workspace = true
+anyhow.workspace = true
+
+[lints]
+workspace = true

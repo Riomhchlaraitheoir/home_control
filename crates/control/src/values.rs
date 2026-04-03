@@ -3,7 +3,7 @@ use futures::stream::BoxStream;
 use futures::FutureExt;
 use light_ranged_integers::RangedU8;
 use std::ops::Not;
-use crate::enum_value;
+use reflect::enum_value;
 
 /// Sensor is an entity which streams data to the controller eg: thermostat
 pub trait Sensor {

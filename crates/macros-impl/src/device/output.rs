@@ -150,7 +150,7 @@ macro_rules! unsupported_op {
     ($operation:ident) => {
         quote! {
             Err(Error::OperationNotSupported {
-                device: self.name.to_owned(),
+                device: self.info.name.to_owned(),
                 field: field.to_owned(),
                 operation: Operation::$operation
             }.into())
@@ -194,7 +194,7 @@ impl Device {
                 (
                     Some(quote! { updates: crate::Updates<#update>, }),
                     Some(quote! { updates, }),
-                    Some(quote! { let updates = manager.subscribe(name.clone()); }),
+                    Some(quote! { let updates = manager.subscribe(info.name.clone()); }),
                 )
             } else {
                 (None, None, None)
@@ -205,7 +205,7 @@ impl Device {
         #[doc = ""]
         #[doc = concat!("See [zigbee2mqtt.io](", #url, ") for more information")]
         pub struct #name {
-            name: String,
+            info: DeviceInfo,
             #publish
             #updates_field
             #(#fields),*
@@ -216,8 +216,8 @@ impl Device {
             #[builder]
             #[allow(missing_docs, reason = "This item is hidden since it's only intended for use in macros")]
             #[doc(hidden)]
-            pub async fn create(name: String, manager: &mut crate::Manager) -> Result<Self, anyhow::Error> {
-                    <Self as Device>::new(manager, name).await
+            pub async fn create(manager: &mut crate::Manager, info: DeviceInfo) -> Result<Self, anyhow::Error> {
+                    <Self as Device>::new(manager, info).await
             }
         }
 
@@ -225,14 +225,18 @@ impl Device {
                 type Args = ();
                 type Manager = crate::Manager;
 
-                async fn new_with_args(manager: &mut crate::Manager, name: String, _: ()) -> Result<Self, anyhow::Error> {
+                fn info(&self) -> &DeviceInfo {
+                    &self.info
+                }
+
+                async fn new_with_args(manager: &mut crate::Manager, info: ::control::reflect::DeviceInfo, _: ()) -> Result<Self, anyhow::Error> {
                     #define_publish
                     #define_updates
                     Ok(Self {
                         #(#values_set,)*
                         #set_publish
                         #set_updates
-                        name,
+                        info
                     })
                 }
             }
@@ -391,6 +395,11 @@ impl Device {
         let info = {
             let fields = self.values.iter().map(|value| {
                 let name = value.field_name().to_string();
+                let desc: String = value.docs.iter().map(|desc| if desc.value().is_empty() {
+                    "\n".to_string()
+                } else {
+                    desc.value()
+                }).collect();
                 let allow_subscribe = value.mode.allow_subscribe();
                 let allow_get = value.mode.allow_get();
                 let allow_set = value.mode.allow_set();
@@ -399,23 +408,26 @@ impl Device {
                 quote! {
                     Field {
                         name: #name.to_string(),
-                        allow_subscribe: #allow_subscribe,
-                        allow_get: #allow_get,
-                        allow_set: #allow_set,
-                        allow_toggle: #allow_toggle,
+                        description: #desc.to_string(),
+                        operations: ::control::reflect::Operations {
+                            subscribe: #allow_subscribe,
+                            get: #allow_get,
+                            set: #allow_set,
+                            toggle: #allow_toggle,
+                        },
                         value_type: ValueType::from_type::<#value_type>(),
                     }
                 }
             });
             quote! {
                         fn info(&self) -> DeviceInfo {
-                DeviceInfo {
-                    name: self.name.to_owned(),
-                    fields: vec![
-                        #(#fields,)*
-                    ],
-                }
+                self.info.clone()
             }
+                fn fields(&self) -> Vec<Field> {
+                    vec![
+                        #(#fields,)*
+                    ]
+                }
                     }
         };
         let subscribe = {
@@ -437,7 +449,7 @@ impl Device {
                 match field {
                     #(#fields,)*
                     _ => Err(Error::FieldNotFound {
-                        device: self.name.to_owned(),
+                        device: self.info.name.to_owned(),
                         field: field.to_owned(),
                     })
                 }
@@ -462,7 +474,7 @@ impl Device {
                 match field {
                     #(#fields,)*
                     _ => Err(Error::FieldNotFound {
-                        device: self.name.to_owned(),
+                        device: self.info.name.to_owned(),
                         field: field.to_owned(),
                     })
                 }
@@ -491,7 +503,7 @@ impl Device {
                 match field {
                     #(#fields,)*
                     _ => Err(Error::FieldNotFound {
-                        device: self.name.to_owned(),
+                        device: self.info.name.to_owned(),
                         field: field.to_owned(),
                     }.into())
                 }
@@ -515,7 +527,7 @@ impl Device {
                 match field {
                     #(#fields,)*
                     _ => Err(Error::FieldNotFound {
-                        device: self.name.to_owned(),
+                        device: self.info.name.to_owned(),
                         field: field.to_owned(),
                     })
                 }
@@ -587,10 +599,10 @@ impl Value {
                 quote! { crate::attribute::SubscribeAttr::new(updates.clone(), #from_device) }
             }
             SubPub::Both => {
-                quote! { crate::attribute::SubscribePublishAttr::#new(updates.clone(), publish.clone(), name.clone(), #attr, #from_device, #to_device) }
+                quote! { crate::attribute::SubscribePublishAttr::#new(updates.clone(), publish.clone(), info.name.clone(), #attr, #from_device, #to_device) }
             }
             SubPub::PubOnly => {
-                quote! { crate::attribute::PublishAttr::#new(publish.clone(), name.clone(), #attr, #to_device) }
+                quote! { crate::attribute::PublishAttr::#new(publish.clone(), info.name.clone(), #attr, #to_device) }
             }
         }
     }

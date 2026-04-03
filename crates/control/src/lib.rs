@@ -4,7 +4,7 @@ pub mod automation;
 mod button;
 pub mod device;
 pub mod device_manager;
-pub mod reflect;
+pub use reflect;
 mod set;
 mod streams;
 mod values;
@@ -21,6 +21,7 @@ use futures::stream::select_all;
 use futures::{FutureExt, StreamExt};
 pub use set::*;
 use std::any::Any;
+use std::collections::HashMap;
 use std::ops::{Deref, DerefMut};
 use std::panic::AssertUnwindSafe;
 pub use streams::*;
@@ -28,6 +29,7 @@ use tokio::signal::unix::{SignalKind, signal};
 use tokio::spawn;
 use tokio_util::sync::CancellationToken;
 use tracing::{Instrument, debug, error, info, info_span};
+use reflect::DeviceInfo;
 pub use values::*;
 
 /// Manager is the overall manager of the automation system where all devices and automations are
@@ -74,12 +76,6 @@ impl<'a, S: manager_builder::State> ManagerBuilder<'a, S> {
         self.device_managers.push(Box::new(manager));
         self
     }
-
-    /// Add a service that should run in the background
-    pub fn add_service(mut self, service: impl Service<'a>) -> Self {
-        self.services.push((service.name(), Box::pin(service.start())));
-        self
-    }
 }
 
 impl<'a> Manager<'a> {
@@ -104,13 +100,28 @@ impl<'a> Manager<'a> {
     }
 
     /// Creates a single device
-    pub async fn add_device<D: Device<Args = ()>>(&mut self, name: String) -> Result<D, CreateDeviceError> {
-        Ok(D::new(self.device_manager()?, name).await?)
+    pub async fn add_device<D: Device<Args = ()>>(&mut self, id: String) -> Result<D, CreateDeviceError> {
+        Ok(D::new(self.device_manager()?, DeviceInfo {
+            name: id.clone(),
+            id,
+            description: None,
+            tags: HashMap::default(),
+        }).await?)
     }
 
     /// Creates a single device
-    pub async fn add_device_with_args<D: Device>(&mut self, name: String, args: D::Args) -> Result<D, CreateDeviceError> {
-        Ok(D::new_with_args(self.device_manager()?, name, args).await?)
+    pub async fn add_device_with_args<D: Device>(&mut self, id: String, args: D::Args) -> Result<D, CreateDeviceError> {
+        Ok(D::new_with_args(self.device_manager()?, DeviceInfo {
+            name: id.clone(),
+            id,
+            description: None,
+            tags: HashMap::default(),
+        }, args).await?)
+    }
+
+    /// Add a service that should run in the background
+    pub fn add_service(&mut self, service: impl Service<'a>) {
+        self.services.push((service.name(), Box::pin(service.start())));
     }
 
     /// Start the manager, this starts all device managers and automations.

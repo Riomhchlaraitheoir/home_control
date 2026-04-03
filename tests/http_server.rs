@@ -33,19 +33,19 @@ async fn http_server() {
     let mut mqttoptions = MqttOptions::new("rumqtt-sync", "localhost", 1883);
     mqttoptions.set_keep_alive(Duration::from_secs(5));
 
-    let manager = Manager::builder()
+    let mut manager = Manager::builder()
         .add_device_manager(zigbee::Manager::builder()
             .mqtt_options(mqttoptions)
             .build())
-        .add_service(
+        .build();
+    manager.add_service(
             WebServer::builder()
                 .bind_address("0.0.0.0")
                 .port(8088)
                 .router(Router::new()
                     .route("/", get("Hello world")))
                 .build()
-        )
-        .build();
+        );
     // let devices: Devices = manager.create().await.unwrap();
     TokioScope::scope_and_block(|scope| {
         scope.spawn(async move {
