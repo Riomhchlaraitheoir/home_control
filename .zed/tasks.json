@@ -1,0 +1,17 @@
+// Project tasks configuration. See https://zed.dev/docs/tasks for documentation.
+//
+// Example:
+[
+  {
+    "label": "Run mock API server",
+    "command": "cargo run --package api-server --example mock",
+  },
+  {
+    "label": "Run slint desktop app",
+    "command": "cargo run --package app-slint",
+  },
+  {
+    "label": "Run iced desktop app",
+    "command": "cargo run --package app-iced",
+  },
+]

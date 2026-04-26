@@ -1,0 +1,52 @@
+import { Spinner, ListView } from "std-widgets.slint";
+import { ElevatedCard } from "@material";
+import { Device } from "models.slint";
+import { LabelledValue } from "../helpers.slint";
+
+export global DeviceListAdapter {
+    in property <bool> loaded: true;
+    in property <[Device]> devices;
+    callback load_devices;
+}
+
+component DeviceCard inherits ElevatedCard {
+    in property <Device> device;
+    width: 400px;
+
+    VerticalLayout {
+        padding: 5px;
+        LabelledValue {
+            label: "Name";
+            value: device.name;
+        }
+
+        LabelledValue {
+            label: "ID";
+            value: device.id;
+        }
+
+        if !device.description.is-empty: LabelledValue {
+            label: "Description";
+            value: device.description;
+        }
+    }
+}
+
+export component DeviceList {
+    callback view-device(Device);
+
+    VerticalLayout {
+        spacing: 10px;
+        for device[i] in DeviceListAdapter.devices: DeviceCard {
+            device: device;
+            clickable: true;
+            clicked => {
+                root.view-device(device);
+            }
+        }
+
+        if !DeviceListAdapter.loaded: Spinner {
+            indeterminate: true;
+        }
+    }
+}

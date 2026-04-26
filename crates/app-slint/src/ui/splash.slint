@@ -1,0 +1,72 @@
+import "fonts/HS_LunaObscura.ttf";
+import { LineEdit, Button, Spinner } from "std-widgets.slint";
+import { SnackBar, OutlinedCard } from "@material";
+
+
+export component SplashPage inherits Rectangle {
+
+    property <bool> connecting;
+    in property <string> connection_error;
+    callback server_selected(string);
+    in property <string> configured_server;
+
+    changed connection_error => {
+        if (!connection_error.is-empty) {
+            connecting = false;
+        }
+    }
+    init => {
+        server_input.text = configured_server;
+    }
+
+
+    HorizontalLayout {
+        alignment: center;
+        VerticalLayout {
+            alignment: center;
+            spacing: 20px;
+            Text {
+                text: "Home Control";
+                font-family: "HS_LunaObscura";
+                font-size: 80px;
+                vertical-alignment: center;
+            }
+
+            HorizontalLayout {
+                Text {
+                    text: "Server:";
+                    horizontal-stretch: 0;
+                    font-size: 15px;
+                }
+
+                server_input := LineEdit {
+                    placeholder-text: "http://server:port";
+                    height: 20px;
+                    font-size: 15px;
+                    enabled: !connecting;
+                }
+            }
+
+            Button {
+                text: "Connect";
+                primary: true;
+                enabled: !connecting;
+                clicked => {
+                    connecting = true;
+                    server_selected(server_input.text)
+                }
+            }
+
+            if !connection_error.is-empty : OutlinedCard {
+                Text {
+                    text: connection_error;
+                    color: red;
+                }
+            }
+
+            if connecting: Spinner {
+                indeterminate: true;
+            }
+        }
+    }
+}

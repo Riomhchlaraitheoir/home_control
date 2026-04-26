@@ -1,18 +1,9 @@
 //! A mock server for testing purposes
 
-use control::reflect::{
-        value::{Value, ValueType},
-        Operation,
-        Operations,
-        DeviceInfo,
-        Error,
-        Field,
-        SetError
-};
-use futures::future::{BoxFuture};
-use futures::stream::BoxStream;
-use std::collections::HashMap;
 use anyhow::Context;
+use control::reflect::{value::{Value, ValueType}, DeviceInfo, DeviceType, Error, Field, Operation, Operations, SetError};
+use futures::future::BoxFuture;
+use futures::stream::BoxStream;
 use tokio::sync::watch::{channel, Sender};
 use tokio::sync::RwLock;
 use tokio_stream::wrappers::WatchStream;
@@ -22,21 +13,21 @@ use tower_http::cors::CorsLayer;
 #[tokio::main]
 async fn main() {
     simple_logger::init_with_level(log::Level::Debug).expect("Unable to setup logging");
-    let app = web_ui::api()
+    let app = api_server::api()
         .add_device(MockDevice {
             info: DeviceInfo {
                 id: "office_light".to_string(),
                 name: "Office light".to_string(),
                 description: None,
+                device_type: DeviceType::Light,
                 tags: [
-                    ("room", "Office"),
-                    ("type", "light")
+                    ("room", "Office")
                 ].into_iter()
                     .map(|(key, value)| (key.to_string(), value.to_string()))
                     .collect(),
             },
             fields: [
-                ("switch".to_string(), (
+                (
                     Field {
                         name: "Switch".to_string(),
                         description: "Control whether the light is on or not".to_string(),
@@ -49,8 +40,8 @@ async fn main() {
                         value_type: ValueType::Bool,
                     },
                     RwLock::new(MockField::new(Value::Bool(false)))
-                )),
-                ("brightness".to_string(), (
+                ),
+                (
                     Field {
                         name: "Brightness".to_string(),
                         description: "The light's brightness".to_string(),
@@ -63,7 +54,50 @@ async fn main() {
                         value_type: ValueType::Int((0..=100).into()),
                     },
                     RwLock::new(MockField::new(Value::Bool(false)))
-                ))
+                )
+            ].into_iter().collect(),
+        })
+        .add_device(MockDevice {
+            info: DeviceInfo {
+                id: "bedroom_light".to_string(),
+                name: "Bedroom light".to_string(),
+                description: Some("The light in the bedroom".to_string()),
+                device_type: DeviceType::Light,
+                tags: [
+                    ("room", "Bedroom")
+                ].into_iter()
+                    .map(|(key, value)| (key.to_string(), value.to_string()))
+                    .collect(),
+            },
+            fields: [
+                (
+                    Field {
+                        name: "Switch".to_string(),
+                        description: "Control whether the light is on or not".to_string(),
+                        operations: Operations {
+                            subscribe: true,
+                            get: true,
+                            set: true,
+                            toggle: true,
+                        },
+                        value_type: ValueType::Bool,
+                    },
+                    RwLock::new(MockField::new(Value::Bool(false)))
+                ),
+                (
+                    Field {
+                        name: "Brightness".to_string(),
+                        description: "The light's brightness".to_string(),
+                        operations: Operations {
+                            subscribe: true,
+                            get: true,
+                            set: true,
+                            toggle: false,
+                        },
+                        value_type: ValueType::Int((0..=100).into()),
+                    },
+                    RwLock::new(MockField::new(Value::Bool(false)))
+                )
             ].into_iter().collect(),
         })
         .build();
@@ -75,20 +109,25 @@ async fn main() {
 
 struct MockDevice {
     info: DeviceInfo,
-    fields: HashMap<String, (Field, RwLock<MockField>)>,
+    fields: Vec<(Field, RwLock<MockField>)>,
 }
 
+impl MockDevice {
+    fn get_field(&self, field_name: &str) -> Option<&(Field, RwLock<MockField>)> {
+        self.fields.iter().find(|(f, _)| f.name == field_name)
+    }
+}
 impl control::reflect::Device for MockDevice {
     fn info(&self) -> DeviceInfo {
         self.info.clone()
     }
 
     fn fields(&self) -> Vec<Field> {
-        self.fields.values().map(|(x, _)| x.clone()).collect()
+        self.fields.iter().map(|(x, _)| x.clone()).collect()
     }
 
-    fn subscribe(&self, field_name: &str) -> Result<BoxStream<'_, Value>, Error> {
-        let Some((info, field)) = self.fields.get(field_name) else {
+    fn subscribe(&self, field_name: &str) -> Result<BoxFuture<'_, BoxStream<'_, Value>>, Error> {
+        let Some((info, field)) = self.get_field(field_name) else {
             return Err(Error::FieldNotFound {
                 device: self.info.name.to_string(),
                 field: field_name.to_string()
@@ -101,11 +140,13 @@ impl control::reflect::Device for MockDevice {
                 field: field_name.to_string()
             })
         }
-        Ok(Box::pin(WatchStream::new(field.blocking_read().sender.subscribe())))
+        Ok(Box::pin(async {
+            Box::pin(WatchStream::new(field.read().await.sender.subscribe())) as BoxStream<'_, Value>
+        }))
     }
 
     fn get(&self, field_name: &str) -> Result<BoxFuture<'_, anyhow::Result<Value>>, Error> {
-        let Some((info, field)) = self.fields.get(field_name) else {
+        let Some((info, field)) = self.get_field(field_name) else {
             return Err(Error::FieldNotFound {
                 device: self.info.name.to_string(),
                 field: field_name.to_string()
@@ -124,7 +165,7 @@ impl control::reflect::Device for MockDevice {
     }
 
     fn set(&self, field_name: &str, value: Value) -> Result<BoxFuture<'_, anyhow::Result<()>>, SetError> {
-        let Some((info, field)) = self.fields.get(field_name) else {
+        let Some((info, field)) = self.get_field(field_name) else {
             return Err(SetError::Error(Error::FieldNotFound {
                 device: self.info.name.to_string(),
                 field: field_name.to_string()
@@ -150,7 +191,7 @@ impl control::reflect::Device for MockDevice {
     }
 
     fn toggle(&self, field_name: &str) -> Result<BoxFuture<'_, anyhow::Result<()>>, Error> {
-        let Some((info, field)) = self.fields.get(field_name) else {
+        let Some((info, field)) = self.get_field(field_name) else {
             return Err(Error::FieldNotFound {
                 device: self.info.name.to_string(),
                 field: field_name.to_string()

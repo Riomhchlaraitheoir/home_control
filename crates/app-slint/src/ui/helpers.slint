@@ -1,0 +1,13 @@
+
+export component LabelledValue inherits HorizontalLayout {
+    in property <string> label;
+    in property <string> value;
+    Text {
+        text: label + ": ";
+        font-weight: 600;
+    }
+
+    Text {
+        text: value;
+    }
+}

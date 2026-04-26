@@ -28,6 +28,8 @@
       <sourceFolder url="file://$MODULE_DIR$/crates/api-server/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/crates/api/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/crates/app/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/app-iced/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/app-slint/src" isTestSource="false" />
       <excludeFolder url="file://$MODULE_DIR$/target" />
     </content>
     <orderEntry type="inheritedJdk" />

@@ -14,5 +14,5 @@ derive_more.workspace = true
 workspace = true
 
 [features]
-client = ["trait-rpc/browser", "trait-rpc/browser-json"]
-server = ["trait-rpc/axum", "trait-rpc/json", "trait-rpc/cbor"]
+client = ["trait-rpc/websocket-client", "trait-rpc/json"]
+server = ["trait-rpc/websocket-server", "trait-rpc/axum", "trait-rpc/json", "trait-rpc/cbor"]

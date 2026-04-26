@@ -29,7 +29,7 @@ use tokio::signal::unix::{SignalKind, signal};
 use tokio::spawn;
 use tokio_util::sync::CancellationToken;
 use tracing::{Instrument, debug, error, info, info_span};
-use reflect::DeviceInfo;
+use reflect::{DeviceInfo, DeviceType};
 pub use values::*;
 
 /// Manager is the overall manager of the automation system where all devices and automations are
@@ -100,21 +100,23 @@ impl<'a> Manager<'a> {
     }
 
     /// Creates a single device
-    pub async fn add_device<D: Device<Args = ()>>(&mut self, id: String) -> Result<D, CreateDeviceError> {
+    pub async fn add_device<D: Device<Args = ()>>(&mut self, id: String, device_type: DeviceType) -> Result<D, CreateDeviceError> {
         Ok(D::new(self.device_manager()?, DeviceInfo {
             name: id.clone(),
             id,
             description: None,
+            device_type,
             tags: HashMap::default(),
         }).await?)
     }
 
     /// Creates a single device
-    pub async fn add_device_with_args<D: Device>(&mut self, id: String, args: D::Args) -> Result<D, CreateDeviceError> {
+    pub async fn add_device_with_args<D: Device>(&mut self, id: String, device_type: DeviceType, args: D::Args) -> Result<D, CreateDeviceError> {
         Ok(D::new_with_args(self.device_manager()?, DeviceInfo {
             name: id.clone(),
             id,
             description: None,
+            device_type,
             tags: HashMap::default(),
         }, args).await?)
     }

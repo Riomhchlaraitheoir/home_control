@@ -1,12 +1,12 @@
 #![doc = include_str!("../README.md")]
 #![allow(missing_docs)]
 
-use std::collections::HashMap;
 use derive_more::Display;
+use std::collections::HashMap;
 use thiserror::Error;
 use trait_rpc::{rpc, serde};
 
-use reflect::value::Range;
+pub use reflect::value::{Range, RangeBound};
 use reflect::{Error, SetError};
 pub use trait_rpc;
 use trait_rpc::serde::{Deserialize, Serialize};
@@ -40,34 +40,37 @@ impl From<reflect::value::ValueType> for ValueType {
 
 #[rpc]
 pub trait Api {
+    /// No-op method for checking connection
+    fn ping() -> u8;
     /// Get a list of devices
-    fn get_devices(&self) -> Vec<Device>;
+    fn get_devices() -> Stream<Device>;
 
     /// call some method for a particular device
-    fn device(&self, device_name: String) -> impl DeviceApi;
+    fn device(device_name: String) -> impl DeviceApi;
 }
 
 #[rpc]
 pub trait DeviceApi {
     /// get this device
-    fn get(&self) -> Option<Device>;
+    fn get() -> Option<Device>;
     /// get the service for this device's field with the given name
-    fn field(&self, field_name: String) -> impl FieldApi;
+    fn field(field_name: String) -> impl FieldApi;
 }
 
 #[rpc]
 pub trait FieldApi {
-    // fn subscribe(&self) -> Result<impl Stream<Item=Value>, OperationError>;
+    fn get_and_subscribe() -> Stream<Result<Value, OperationError>>;
+    fn subscribe() -> Stream<Result<Value, OperationError>>;
     /// Get the current value of this field
-    fn get(&self) -> Result<Value, OperationError>;
+    fn get() -> Result<Value, OperationError>;
     /// Update the current value of this field
-    fn set(&self, value: Value) -> Result<(), OperationError>;
+    fn set(value: Value) -> Result<(), OperationError>;
     /// Toggle the current value of this field
-    fn toggle(&self) -> Result<(), OperationError>;
+    fn toggle() -> Result<(), OperationError>;
 }
 
 /// A dynamic value which is used when accessing the field dynamically
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Display)]
 #[serde(crate = "trait_rpc::serde")]
 #[serde(untagged)]
 pub enum Value {
@@ -81,6 +84,18 @@ pub enum Value {
     String(String),
     /// a absent value
     None,
+}
+
+impl Value {
+    pub fn type_name(&self) -> &'static str {
+        match self {
+            Value::Bool(_) => "bool",
+            Value::Int(_) => "int",
+            Value::Float(_) => "float",
+            Value::String(_) => "string",
+            Value::None => "null"
+        }
+    }
 }
 
 impl From<reflect::value::Value> for Value {
@@ -235,8 +250,37 @@ pub struct Device {
     pub description: Option<String>,
     /// Device tags
     pub tags: HashMap<String, String>,
+    /// The type of the device
+    pub device_type: DeviceType,
     /// The device's fields
     pub fields: Vec<Field>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Copy)]
+#[serde(crate = "trait_rpc::serde")]
+pub enum DeviceType {
+    /// A light
+    Light,
+    /// A switch/button
+    Switch,
+    /// Some kind of sensor
+    Sensor,
+    /// Other indicates that this device does not fit any of the other types
+    Other,
+    /// Unknown indicates a new device type that this version of the API isn't aware of
+    #[serde(other)]
+    Unknown,
+}
+
+impl From<reflect::DeviceType> for DeviceType {
+    fn from(value: reflect::DeviceType) -> Self {
+        match value {
+            reflect::DeviceType::Light => Self::Light,
+            reflect::DeviceType::Switch => Self::Switch,
+            reflect::DeviceType::Sensor => Self::Sensor,
+            reflect::DeviceType::Other => Self::Other,
+        }
+    }
 }
 
 #[cfg(feature = "server")]
@@ -247,6 +291,7 @@ impl From<(reflect::DeviceInfo, Vec<reflect::Field>)> for Device {
             name: info.name,
             description: info.description,
             tags: info.tags,
+            device_type: info.device_type.into(),
             fields: fields.into_iter().map(Into::into).collect(),
         }
     }

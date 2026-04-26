@@ -20,8 +20,23 @@ pub struct DeviceInfo {
     pub name: String,
     /// A description of the device
     pub description: Option<String>,
+    /// The type of device this is
+    pub device_type: DeviceType,
     /// Device tags
     pub tags: HashMap<String, String>,
+}
+
+/// The broad category of a device
+#[derive(Serialize, Deserialize, Debug, Clone, Copy)]
+pub enum DeviceType {
+    /// A light
+    Light,
+    /// A switch/button
+    Switch,
+    /// Some kind of sensor
+    Sensor,
+    /// Other indicates that this device does not fit any of the other types
+    Other
 }
 
 /// A Device which supports dynamic access
@@ -35,7 +50,7 @@ pub trait Device: Send + Sync {
     /// Return the fields for this device
     fn fields(&self) -> Vec<Field>;
     /// subscribe to updates from the given field
-    fn subscribe(&self, field: &str) -> Result<BoxStream<'_, Value>, Error>;
+    fn subscribe(&self, field: &str) -> Result<BoxFuture<'_, BoxStream<'_, Value>>, Error>;
 
     /// get the current state of the given field
     fn get(&self, field: &str) -> Result<BoxFuture<'_, anyhow::Result<Value>>, Error>;

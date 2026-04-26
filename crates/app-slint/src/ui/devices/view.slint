@@ -1,0 +1,48 @@
+import { Spinner, ListView } from "std-widgets.slint";
+import { ElevatedCard } from "@material";
+import { Device } from "models.slint";
+import { LabelledValue } from "../helpers.slint";
+import { FieldList, FieldListAdapter } from "fields/list.slint";
+
+export global DeviceViewAdapter {
+    in property <bool> loaded: true;
+    in property <Device> device;
+    callback load_device(string);
+}
+
+component LoadedDeviceView {
+    in property <Device> device;
+    width: 400px;
+
+    VerticalLayout {
+        padding: 5px;
+        Text {
+            text: device.name;
+            font-size: 20pt;
+            font-weight: 550;
+        }
+
+        LabelledValue {
+            label: "ID";
+            value: device.id;
+        }
+
+        if !device.description.is-empty: LabelledValue {
+            label: "Description";
+            value: device.description;
+        }
+
+        FieldList {
+            fields: device.fields;
+        }
+    }
+}
+
+export component DeviceView {
+    if DeviceViewAdapter.loaded: LoadedDeviceView {
+        device: DeviceViewAdapter.device;
+    }
+    if !DeviceViewAdapter.loaded: Spinner {
+        indeterminate: true;
+    }
+}
