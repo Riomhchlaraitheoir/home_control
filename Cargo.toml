@@ -33,34 +33,34 @@ api.path = "crates/api"
 api-server.path = "crates/api-server"
 reflect.path = "crates/reflect"
 
-rumqttc = "0.25.0"
+rumqttc = "0.25.1"
 serde = { version = "1.0.228", features = ["derive"] }
-serde_json = "1.0.145"
-tokio = { version = "1.47.1", features = ["rt-multi-thread", "sync", "macros", "signal"] }
-tokio-stream = { version = "0.1.17", features = ["sync"] }
-thiserror = "2.0.17"
-futures = "0.3.31"
+serde_json = "1.0.149"
+tokio = { version = "1.52.1", features = ["rt-multi-thread", "sync", "macros", "signal"] }
+tokio-stream = { version = "0.1.18", features = ["sync"] }
+thiserror = "2.0.18"
+futures = "0.3.32"
 light_ranged_integers = { git = "https://gitlab.com/MassiminoilTrace/light-ranged-integers.git", features = ["serde"] }
 async-timer = "1.0.0-beta.15"
-derive_more = { version = "2.0.1", features = ["full"] }
-proc-macro2 = "1.0.101"
-quote = "1.0.42"
+derive_more = { version = "2.1.1", features = ["full"] }
+proc-macro2 = "1.0.106"
+quote = "1.0.45"
 simple-log = "2.4.0"
-syn = { version = "2.0.114", features = ["full", "extra-traits"] }
-tracing = "0.1.41"
+syn = { version = "2.0.117", features = ["full", "extra-traits"] }
+tracing = "0.1.44"
 pnet = "0.35.0"
-bon = "3.8.1"
-tokio-util = "0.7.17"
+bon = "3.9.1"
+tokio-util = "0.7.18"
 async-scoped = { version = "0.9.0", features = ["use-tokio"] }
-convert_case = "0.9.0"
-log = "0.4.28"
-pin-project = "1.1.10"
-anyhow = "1.0.100"
-axum = { version = "0.8.7", features = ["macros", "tokio", "json"] }
+convert_case = "0.11.0"
+log = "0.4.29"
+pin-project = "1.1.11"
+anyhow = "1.0.102"
+axum = { version = "0.8.9", features = ["macros", "tokio", "json"] }
 trait-rpc = { git = "https://github.com/Riomhchlaraitheoir/trait-rpc.git" }
 dirs = "6.0.0"
 iced = "0.14"
-iced_aw = "0.13"
+iced_aw = "0.14"
 iced_test = "0.14.0"
 simple_logger = "5.2.0"
 tower-http = "0.6.8"
