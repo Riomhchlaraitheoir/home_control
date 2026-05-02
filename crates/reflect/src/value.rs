@@ -25,6 +25,12 @@ pub enum Value {
 
 /// Implement the needed traits to use this enum type as a value
 /// ```
+/// use reflect::enum_value;
+/// enum EnumType {
+///     Variant1,
+///     Another
+/// }
+/// 
 /// enum_value!(EnumType,
 ///     "string_variant" => Variant1,
 ///     "another-variant" => Another

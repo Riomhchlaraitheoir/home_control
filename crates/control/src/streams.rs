@@ -13,11 +13,11 @@ pub trait StreamCustomExt: Stream + Sized {
     /// filter out any values not equal to the given value, eg:
     /// ```
     /// use futures::StreamExt;
-    /// use control::{ButtonEvent, Sensor};
+    /// use control::{ButtonEvent, Sensor, StreamCustomExt};
     ///
-    /// async fn example(button: Sensor<ButtonEvent>) {
+    /// async fn example(button: impl Sensor<Item=ButtonEvent>) {
     ///     let events = button.subscribe();
-    ///     let presses = events.filter_eq(ButtonEvent::Press);
+    ///     let mut presses = events.filter_eq(ButtonEvent::Press);
     ///     while presses.next().await.is_some() {
     ///         println!("Button was pressed")
     ///     }
