@@ -8,6 +8,8 @@ workspace = true
 
 [lib]
 proc-macro = true
+test = false
+doctest = false
 
 [dependencies]
 macros-impl = { workspace = true }

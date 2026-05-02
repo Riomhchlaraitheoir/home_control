@@ -9,20 +9,19 @@ debug = ["iced/debug"]
 [dependencies]
 anyhow.workspace = true
 api = { workspace = true, features = ["client"] }
-dirs = "6.0.0"
-iced ={ version = "0.14", features = ["tokio", "advanced"] }
+dirs = { workspace = true }
+iced ={ workspace = true, features = ["tokio", "advanced"] }
 log.workspace = true
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 tokio.workspace = true
-iced_aw = { version = "0.13", features = ["spinner"] }
+iced_aw = { workspace = true, features = ["spinner"] }
 futures.workspace = true
-iced_material = "0.14"
-simple_logger = "5.2.0"
-derive_more = { version = "2.1.1", features = ["from"] }
+simple_logger = { workspace = true }
+derive_more = { workspace = true, features = ["from"] }
 
 [dev-dependencies]
-iced_test = "0.14.0"
+iced_test = { workspace = true }
 
 [lints]
 workspace = true

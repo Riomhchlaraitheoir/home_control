@@ -10,7 +10,6 @@ workspace = true
 light_ranged_integers = { workspace = true }
 futures = { workspace = true }
 async-timer = { workspace = true }
-macros = { workspace = true }
 thiserror = { workspace = true }
 anyhow = { workspace = true }
 tracing = { workspace = true }
@@ -19,10 +18,10 @@ bon = { workspace = true }
 tokio = { workspace = true}
 tokio-util = { workspace = true}
 async-scoped = { workspace = true}
-serde_json = { workspace = true }
-serde.workspace = true
-derive_more.workspace = true
 reflect.workspace = true
 
 [features]
 custom = []
+
+[lib]
+test = false

@@ -18,11 +18,10 @@ use tokio::task::JoinHandle;
 use tokio_stream::wrappers::BroadcastStream;
 
 const CONFIG: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/rumqttd.test.toml");
-const RUMQTTD: &str = env!("CARGO_BIN_FILE_RUMQTTD");
 
 /// Start a local MQTT broker at `localhost:1883`
 pub fn start_mqtt_broker() -> (Connection, CancelGuard) {
-    let broker = Command::new(RUMQTTD)
+    let broker = Command::new("rumqttd")
         .args(["--config", CONFIG])
         .spawn()
         .expect("failed to start mqtt broker");

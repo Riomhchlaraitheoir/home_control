@@ -21,3 +21,7 @@ tokio = { workspace = true }
 [dev-dependencies]
 tokio = { workspace = true, features = ["full"] }
 simple-log = { workspace = true }
+
+[lib]
+test = false
+doctest = false

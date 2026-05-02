@@ -4,7 +4,6 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
-rumqttd = { version = "0.20.0", artifact = ["bin"] }
 rumqttc = { workspace = true }
 tokio = { workspace = true, features = ["rt-multi-thread", "full"] }
 tokio-stream = { workspace = true }
@@ -14,3 +13,7 @@ log = { workspace = true }
 
 [lints]
 workspace = true
+
+[lib]
+test = false
+doctest = false

@@ -18,6 +18,4 @@ pub use arp;
 #[doc = include_str!("../crates/web/README.md")]
 pub mod web {
     pub use ::web::*;
-    #[cfg(feature = "web-ui")]
-    pub use web_ui;
 }

@@ -11,3 +11,7 @@ proc-macro2 = { workspace = true }
 syn = { workspace = true }
 quote = { workspace = true }
 convert_case = { workspace = true }
+
+[lib]
+test = false
+doctest = false

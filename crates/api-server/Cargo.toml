@@ -7,22 +7,26 @@ edition.workspace = true
 bon = { workspace = true }
 control = { workspace = true }
 axum = { workspace = true }
-anyhow = { workspace = true }
 futures = { workspace = true }
 tracing = { workspace = true }
-api = { path = "../api", features = ["server"] }
-tokio.workspace = true
+api = { workspace = true, features = ["server"] }
 
 [lints]
 workspace = true
 
 [dev-dependencies]
 tokio-stream.workspace = true
-tower-http = { version = "0.6.8", features = ["cors"] }
-simple_logger = "5.1.0"
-log = "0.4.29"
-tracing = { version = "0.1.44", features = ["log"] }
+tower-http = { workspace = true, features = ["cors"] }
+simple_logger = { workspace = true }
+log = { workspace = true }
+tracing = { workspace = true, features = ["log"] }
+anyhow = { workspace = true }
+tokio.workspace = true
 
 [[example]]
 name = "mock"
 required-features = []
+
+[lib]
+test = false
+doctest = false
