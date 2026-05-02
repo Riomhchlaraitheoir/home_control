@@ -4,7 +4,7 @@
 //! This macro allows for devices to be defined in a unified location for easy reference
 
 use control::Manager;
-use home_control::arp::{ArpDevice, MacAddr};
+use tintean::arp::{ArpDevice, MacAddr};
 use macros::DeviceSet;
 use rumqttc::MqttOptions;
 use std::net::Ipv4Addr;

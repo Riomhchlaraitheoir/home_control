@@ -11,7 +11,7 @@ use simple_log::LogConfigBuilder;
 use std::time::Duration;
 use testing::{mock_philips_button, mock_philips_light, start_mqtt_broker};
 use tokio::time::sleep;
-use home_control::web::axum::Router;
+use tintean::web::axum::Router;
 use web::axum::routing::get;
 use web::WebServer;
 

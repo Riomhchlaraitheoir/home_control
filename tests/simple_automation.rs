@@ -4,8 +4,8 @@
 //! This test is designed to ensure that automations are triggered and running properly in the general case
 
 use control::{ButtonEvent, Manager, Sensor, ToggleValue};
-use home_control::automation::Automation;
-use home_control::zigbee::devices::philips::{HueSmartButton, Light};
+use tintean::automation::Automation;
+use tintean::zigbee::devices::philips::{HueSmartButton, Light};
 use log::{Level, debug};
 use macros::DeviceSet;
 use rumqttc::MqttOptions;

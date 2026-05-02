@@ -2,8 +2,8 @@
 //! A simple example showing how a lightswitch could be implemented
 
 use control::{ButtonEvent, Sensor, ToggleValue};
-use home_control::automation::Automation;
-use home_control::zigbee::devices::philips::{HueSmartButton, Light};
+use tintean::automation::Automation;
+use tintean::zigbee::devices::philips::{HueSmartButton, Light};
 use log::{Level, debug};
 use rumqttc::MqttOptions;
 use simple_log::LogConfigBuilder;

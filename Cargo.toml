@@ -67,7 +67,7 @@ tower-http = "0.6.8"
 #trait-rpc = { path = "../trait-rpc" }
 
 [package]
-name = "home_control"
+name = "tintean"
 version.workspace = true
 edition.workspace = true
 

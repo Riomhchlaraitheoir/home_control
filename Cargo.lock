@@ -1748,29 +1748,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dfa686283ad6dd069f105e5ab091b04c62850d3e4cf5d67debad1933f55023df"
 
 [[package]]
-name = "home_control"
-version = "0.1.0"
-dependencies = [
- "api-server",
- "arp",
- "async-scoped",
- "control",
- "derive_more",
- "light_ranged_integers",
- "log",
- "macros",
- "rumqttc",
- "simple-log",
- "testing",
- "tokio",
- "tokio-stream",
- "tracing",
- "web",
- "wiz",
- "zigbee",
-]
-
-[[package]]
 name = "http"
 version = "1.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4463,6 +4440,29 @@ checksum = "2e70e4c5a0e0a8a4823ad65dfe1a6930e4f4d756dcd9dd7939022b5e8c501215"
 dependencies = [
  "num-conv",
  "time-core",
+]
+
+[[package]]
+name = "tintean"
+version = "0.1.0"
+dependencies = [
+ "api-server",
+ "arp",
+ "async-scoped",
+ "control",
+ "derive_more",
+ "light_ranged_integers",
+ "log",
+ "macros",
+ "rumqttc",
+ "simple-log",
+ "testing",
+ "tokio",
+ "tokio-stream",
+ "tracing",
+ "web",
+ "wiz",
+ "zigbee",
 ]
 
 [[package]]

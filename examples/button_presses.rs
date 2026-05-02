@@ -2,9 +2,9 @@
 //! A simple example showing how a light could be controlled by a button
 
 use control::StreamCustomExt;
-use home_control::automation::Automation;
-use home_control::zigbee::devices::philips::HueSmartButton;
-use home_control::{Sensor};
+use tintean::automation::Automation;
+use tintean::zigbee::devices::philips::HueSmartButton;
+use tintean::{Sensor};
 use log::Level;
 use rumqttc::MqttOptions;
 use simple_log::LogConfigBuilder;
