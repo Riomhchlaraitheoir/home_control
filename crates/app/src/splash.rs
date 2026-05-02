@@ -50,9 +50,9 @@ impl Splash {
 
     pub fn view(&self) -> Element<'_, SplashMessage> {
         let server_field = text_input("http://server.com:443", &self.server)
-            .on_input(|s| SplashMessage::ServerInput(s))
+            .on_input(SplashMessage::ServerInput)
             .on_submit(SplashMessage::TryConnect);
-        let connect_button = button("connect").on_press(SplashMessage::TryConnect.into());
+        let connect_button = button("connect").on_press(SplashMessage::TryConnect);
         let input = row![server_field, connect_button].width(500);
         let mut col = column![input];
         if let Some(error) = &self.error {

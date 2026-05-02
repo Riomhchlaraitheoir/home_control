@@ -41,6 +41,7 @@ imports! {
     use futures::stream::BoxStream;
     use futures::future::BoxFuture;
     use futures::future::FutureExt;
+    use futures::future::ready;
 }
 
 impl ToTokens for Device {
@@ -434,7 +435,7 @@ impl Device {
             let fields = self.values.iter().map(|value| {
                 let name = value.field_name();
                 let block = if value.mode.allow_subscribe() {
-                    quote! { Ok(Box::pin(self.#name.subscribe().map(Value::from))) }
+                    quote! { Ok(Box::pin(ready(Box::pin(self.#name.subscribe().map(Value::from)) as BoxStream<_>))) }
                 } else {
                     unsupported_op!(Subscribe)
                 };
@@ -443,7 +444,7 @@ impl Device {
                 quote! { #name => #block }
             });
             quote! {
-            fn subscribe(&self, field: &str) -> Result<BoxStream<'_, Value>, Error> {
+            fn subscribe(&self, field: &str) -> Result<BoxFuture<BoxStream<'_, Value>>, Error> {
                     use Sensor;
                     use StreamExt;
                 match field {

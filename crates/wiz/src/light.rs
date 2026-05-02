@@ -217,7 +217,7 @@ impl reflect::Device for Light {
         ]
     }
 
-    fn subscribe(&self, field: &str) -> Result<BoxStream<'_, Value>, reflect::Error> {
+    fn subscribe(&self, field: &str) -> Result<BoxFuture<'_, BoxStream<'_, Value>>, reflect::Error> {
         Err(match field {
             "state" | "temp" | "brightness" => reflect::Error::OperationNotSupported {
                 device: self.info.name.to_string(),

@@ -202,9 +202,9 @@ impl reflect::Device for ArpDevice {
         ]
     }
 
-    fn subscribe(&self, field: &str) -> Result<BoxStream<'_, Value>, reflect::Error> {
+    fn subscribe(&self, field: &str) -> Result<BoxFuture<'_, BoxStream<'_, Value>>, reflect::Error> {
         if field == "detected" {
-            Ok(Box::pin(self.online_changes().map(Value::from)))
+            Ok(Box::pin(ready(Box::pin(self.online_changes().map(Value::from)) as BoxStream<_>)))
         } else {
             Err(reflect::Error::FieldNotFound {
                 device: self.info.name.clone(),
