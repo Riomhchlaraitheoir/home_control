@@ -52,7 +52,7 @@ impl Devices {
                 let Self::View(view) = self else {
                     return Action::None
                 };
-                match view.update(message) {
+                match view.update(client, message) {
                     view::Action::None => {
                         Action::None
                     }

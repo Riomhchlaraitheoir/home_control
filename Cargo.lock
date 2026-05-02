@@ -125,7 +125,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "app-iced"
+name = "app"
 version = "0.1.0"
 dependencies = [
  "anyhow",
