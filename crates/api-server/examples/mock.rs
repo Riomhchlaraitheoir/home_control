@@ -53,7 +53,7 @@ async fn main() {
                         },
                         value_type: ValueType::Int((0..=100).into()),
                     },
-                    RwLock::new(MockField::new(Value::Bool(false)))
+                    RwLock::new(MockField::new(Value::Int(100)))
                 )
             ].into_iter().collect(),
         })
@@ -96,7 +96,7 @@ async fn main() {
                         },
                         value_type: ValueType::Int((0..=100).into()),
                     },
-                    RwLock::new(MockField::new(Value::Bool(false)))
+                    RwLock::new(MockField::new(Value::Int(0)))
                 )
             ].into_iter().collect(),
         })

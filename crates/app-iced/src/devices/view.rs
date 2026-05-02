@@ -1,4 +1,3 @@
-use std::convert::Infallible;
 use crate::components::Status;
 use crate::{Client, Toast};
 use api::trait_rpc::RpcError;
@@ -11,6 +10,7 @@ use iced::font::Weight;
 use iced::widget::{button, column, combo_box, row, stack, text};
 use iced::{Element, Font, Task};
 use iced_aw::Spinner;
+use std::convert::Infallible;
 use std::future::ready;
 use std::pin::Pin;
 
@@ -20,7 +20,7 @@ pub struct ViewDevice {
     field_values: Vec<FieldState>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 enum Value<T = api::Value> {
     /// The value is loading
     Loading,
@@ -64,12 +64,14 @@ pub enum Message {
     SetUpdated(usize, SetValue),
     Submit(usize),
     LoadFailure(String, String),
+    SetResult(String, Result<(), String>),
 }
 
 #[derive(Debug, Clone)]
 pub enum SetValue {
     Bool(bool),
-    Int(String)
+    Int(String),
+    String(String),
 }
 
 impl SetValue {
@@ -77,6 +79,7 @@ impl SetValue {
         match self {
             Self::Bool(_) => "bool",
             Self::Int(_) => "int",
+            Self::String(_) => "string",
         }
     }
 }
@@ -112,7 +115,7 @@ impl ViewDevice {
                     }
                 };
                 let state = if field.operations.set {
-                    match field.value_type {
+                    match &field.value_type {
                         ValueType::Bool => FieldState::Bool {
                             combo_box: combo_box::State::new(vec![false, true]),
                             value: value.into(),
@@ -121,11 +124,27 @@ impl ViewDevice {
                         ValueType::Int(range) => FieldState::Int {
                             value: value.into(),
                             set_value: None,
-                            range,
-                            warning: None
+                            range: *range,
+                            warning: None,
+                            field_name: field.name.clone(),
                         },
                         ValueType::Float => todo!(),
-                        ValueType::String { .. } => todo!(),
+                        ValueType::String { values } => {
+                            if let Some(values) = values {
+                                FieldState::Enum {
+                                    value: value.into(),
+                                    combo_box: combo_box::State::new(values.clone()),
+                                    set_value: None,
+                                    field_name: field.name.clone(),
+                                }
+                            } else {
+                                FieldState::String {
+                                    value: value.into(),
+                                    set_value: None,
+                                    field_name: field.name.clone(),
+                                }
+                            }
+                        }
                         ValueType::Optional(_) => todo!(),
                     }
                 } else {
@@ -163,7 +182,7 @@ impl ViewDevice {
         .into()
     }
 
-    pub fn update(&mut self, message: Message) -> Action {
+    pub fn update(&mut self, client: &Client, message: Message) -> Action {
         match message {
             Message::Loaded(index, value) => self.field_values[index].update(value),
             Message::LoadFailure(field_name, error) => Action::Toast(Toast {
@@ -172,7 +191,19 @@ impl ViewDevice {
                 status: Status::Warning,
             }),
             Message::SetUpdated(index, value) => self.field_values[index].update_set(value),
-            Message::Submit(index) => Action::Task(self.field_values[index].set_task())
+            Message::Submit(index) => Action::Task(self.field_values[index].set_task(
+                client.clone(),
+                &self.device.id,
+                &self.device.fields[index].name,
+            )),
+            Message::SetResult(field_name, result) => match result {
+                Ok(()) => Action::None,
+                Err(error) => Action::Toast(Toast {
+                    title: format!("Failed to updates {field_name} value"),
+                    body: error,
+                    status: Status::Danger,
+                }),
+            },
         }
     }
 }
@@ -211,9 +242,10 @@ fn field_list<'a>(fields: &'a [Field], values: &'a [FieldState]) -> Element<'a, 
             if !field.operations.set {
                 return stack![].into();
             }
-            value_setter(&values[i], i)
+            values[i].value_setter(i)
         },
-    );
+    )
+    .width(150);
     table([name, desc, ty, value, set], fields.iter().enumerate()).into()
 }
 
@@ -305,9 +337,21 @@ enum FieldState {
     },
     Int {
         value: Value<i64>,
-        set_value: Option<String>,
+        set_value: Option<(i64, String)>,
         range: api::Range<i64>,
         warning: Option<String>,
+        field_name: String,
+    },
+    String {
+        value: Value<String>,
+        set_value: Option<String>,
+        field_name: String,
+    },
+    Enum {
+        value: Value<String>,
+        combo_box: combo_box::State<String>,
+        set_value: Option<String>,
+        field_name: String,
     },
     NoSet {
         value: Value,
@@ -324,17 +368,35 @@ impl FieldState {
             } => combo_box(state, "", set_value.as_ref(), move |value| {
                 Message::SetUpdated(field_index, SetValue::Bool(value))
             })
-                .into(),
-            FieldState::Int { set_value, .. } => iced::widget::text_input( // TODO: show warning
+            .into(),
+            FieldState::Int { set_value, .. } => iced::widget::text_input(
+                // TODO: show warning
                 "",
                 set_value
-                    .as_deref()
+                    .as_ref()
+                    .map(|(_, s)| s.as_str())
                     .unwrap_or_default(),
-            ).on_input(move |value| {
-                Message::SetUpdated(field_index, SetValue::Int(value))
-            }).on_submit(Message::Submit(field_index))
-                .into(),
+            )
+            .on_input(move |value| Message::SetUpdated(field_index, SetValue::Int(value)))
+            .on_submit(Message::Submit(field_index))
+            .into(),
             FieldState::NoSet { .. } => stack![].into(),
+
+            FieldState::String { set_value, .. } => {
+                iced::widget::text_input("", set_value.as_deref().unwrap_or_default())
+                    .on_input(move |value| Message::SetUpdated(field_index, SetValue::Int(value)))
+                    .on_submit(Message::Submit(field_index))
+                    .into()
+            }
+
+            FieldState::Enum {
+                combo_box: state,
+                set_value,
+                ..
+            } => combo_box(state, "", set_value.as_ref(), move |value| {
+                Message::SetUpdated(field_index, SetValue::String(value))
+            })
+            .into(),
         };
         row![input, button("Set").on_press(Message::Submit(field_index))].into()
     }
@@ -351,11 +413,34 @@ impl FieldState {
                 };
                 *value = Value::Loaded(new_value);
             }
-            FieldState::Int { value, .. } => {
+            FieldState::Int {
+                value, field_name, ..
+            } => {
                 let api::Value::Int(new_value) = new_value else {
                     return Action::Toast(Toast {
                         title: "Received wrong value type from server".to_string(),
-                        body: format!("Expected int, but received: {}", new_value.type_name()),
+                        body: format!(
+                            "{field_name}: Expected int, but received: {}",
+                            new_value.type_name()
+                        ),
+                        status: Status::Warning,
+                    });
+                };
+                *value = Value::Loaded(new_value);
+            }
+            FieldState::String {
+                value, field_name, ..
+            }
+            | FieldState::Enum {
+                value, field_name, ..
+            } => {
+                let api::Value::String(new_value) = new_value else {
+                    return Action::Toast(Toast {
+                        title: "Received wrong value type from server".to_string(),
+                        body: format!(
+                            "{field_name}: Expected string, but received: {}",
+                            new_value.type_name()
+                        ),
                         status: Status::Warning,
                     });
                 };
@@ -378,7 +463,12 @@ impl FieldState {
                 };
                 *set_value = Some(value)
             }
-            FieldState::Int { set_value, range, warning, .. } => {
+            FieldState::Int {
+                set_value,
+                range,
+                warning,
+                ..
+            } => {
                 let SetValue::Int(value) = value else {
                     return Action::Toast(Toast {
                         title: "Received wrong value type from ui".to_string(),
@@ -390,10 +480,30 @@ impl FieldState {
                     if !range.contains(&int_value) {
                         *warning = Some(format!("value outside range: {range}"))
                     }
-                    *set_value = Some(value)
+                    *set_value = Some((int_value, value))
                 }
             }
             FieldState::NoSet { .. } => {}
+
+            FieldState::String {
+                set_value,
+                field_name,
+                ..
+            }
+            | FieldState::Enum {
+                set_value,
+                field_name,
+                ..
+            } => {
+                let SetValue::String(value) = value else {
+                    return Action::Toast(Toast {
+                        title: format!("{field_name}: Received wrong value type from ui"),
+                        body: format!("Expected string, but received: {}", value.type_name()),
+                        status: Status::Warning,
+                    });
+                };
+                *set_value = Some(value)
+            }
         }
         Action::None
     }
@@ -403,10 +513,49 @@ impl FieldState {
             FieldState::Bool { value, .. } => value.as_ref().map(|value| value.to_string()),
             FieldState::Int { value, .. } => value.as_ref().map(|value| value.to_string()),
             FieldState::NoSet { value, .. } => value.as_ref().map(|value| value.to_string()),
+
+            FieldState::String { value, .. } | FieldState::Enum { value, .. } => value.clone(),
         }
     }
 
-    fn set_task(&mut self) -> Task<Message> {
-        todo!()
+    fn set_task(&mut self, client: Client, device_id: &str, field_name: &str) -> Task<Message> {
+        let value = match self {
+            FieldState::Bool { set_value, .. } => {
+                let Some(set_value) = set_value else {
+                    return Task::none();
+                };
+                api::Value::Bool(*set_value)
+            }
+            FieldState::Int { set_value, .. } => {
+                let Some((value, _)) = set_value else {
+                    return Task::none();
+                };
+                api::Value::Int(*value)
+            }
+            FieldState::String { set_value, .. } | FieldState::Enum { set_value, .. } => {
+                let Some(value) = set_value else {
+                    return Task::none();
+                };
+                api::Value::String(value.clone())
+            }
+            FieldState::NoSet { .. } => {
+                return Task::none();
+            }
+        };
+        let field_name = field_name.to_string();
+        let device_id = device_id.to_string();
+        Task::future(async move {
+            let result = client
+                .device(device_id)
+                .field(field_name.clone())
+                .set(value)
+                .await;
+            let result = match result {
+                Ok(Ok(())) => Ok(()),
+                Ok(Err(error)) => Err(error.to_string()),
+                Err(error) => Err(error.to_string()),
+            };
+            Message::SetResult(field_name, result)
+        })
     }
 }

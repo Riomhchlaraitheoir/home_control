@@ -5089,6 +5089,7 @@ dependencies = [
 [[package]]
 name = "trait-rpc"
 version = "0.1.0"
+source = "git+https://github.com/Riomhchlaraitheoir/trait-rpc.git#a9c9f34107acff218bc6ac36bbe3b734062722e2"
 dependencies = [
  "async-executor",
  "axum",
@@ -5112,6 +5113,7 @@ dependencies = [
 [[package]]
 name = "trait-rpc-macros"
 version = "0.1.0"
+source = "git+https://github.com/Riomhchlaraitheoir/trait-rpc.git#a9c9f34107acff218bc6ac36bbe3b734062722e2"
 dependencies = [
  "quote",
  "syn",
@@ -5121,6 +5123,7 @@ dependencies = [
 [[package]]
 name = "trait-rpc-macros-impl"
 version = "0.1.0"
+source = "git+https://github.com/Riomhchlaraitheoir/trait-rpc.git#a9c9f34107acff218bc6ac36bbe3b734062722e2"
 dependencies = [
  "convert_case 0.10.0",
  "proc-macro2",

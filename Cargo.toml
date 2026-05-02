@@ -62,8 +62,8 @@ pin-project = "1.1.10"
 rumqttd = "0.20.0"
 anyhow = "1.0.100"
 axum = { version = "0.8.7", features = ["macros", "tokio", "json"] }
-#trait-rpc = { git = "https://github.com/Riomhchlaraitheoir/trait-rpc.git", rev = "a701875" }
-trait-rpc = { path = "../trait-rpc" }
+trait-rpc = { git = "https://github.com/Riomhchlaraitheoir/trait-rpc.git" }
+#trait-rpc = { path = "../trait-rpc" }
 
 [package]
 name = "home_control"

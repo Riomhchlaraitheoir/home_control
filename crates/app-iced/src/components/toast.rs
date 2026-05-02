@@ -15,7 +15,7 @@ use iced::{
     Vector,
 };
 
-pub const DEFAULT_TIMEOUT: u64 = 5;
+pub const DEFAULT_TIMEOUT: u64 = 15;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Status {

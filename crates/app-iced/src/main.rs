@@ -14,7 +14,7 @@ use api::{
 use derive_more::From;
 use iced::{widget::{stack, Container}, Element, Length::Fill, Padding, Task};
 use iced_aw::Spinner;
-use log::{info, warn};
+use log::{debug, info, warn};
 use std::collections::VecDeque;
 use std::mem;
 
@@ -63,19 +63,19 @@ impl Main {
     }
 
     fn update(&mut self, message: MainMessage) -> Task<MainMessage> {
-        info!("Processing message: {:?}", message);
+        debug!("Processing message: {:?}", message);
         match message {
             MainMessage::ConfigFileLoaded(config) => {
                 *self = Self::Splash(
                     Splash::new(config.server.clone().unwrap_or_default()),
                     config,
                 );
-                info!("Updated state: {:?}", self);
+                debug!("Updated state: {:?}", self);
                 Task::none()
             }
             MainMessage::Splash(message) => {
                 if let Self::Splash(splash, config) = self {
-                    match splash.update(message) {
+                    match splash.update(config, message) {
                         splash::Action::None => Task::none(),
                         splash::Action::Task(task) => task.map(MainMessage::Splash),
                         splash::Action::ConnectionSuccess(client) => {
@@ -89,7 +89,7 @@ impl Main {
                                 client,
                                 config: config.clone(),
                             };
-                            info!("Updated state: {:?}", self);
+                            debug!("Updated state: {:?}", self);
                             Task::batch([
                                 Task::done(MainMessage::App(Message::Init)),
                                 Task::future(async move {
@@ -106,7 +106,7 @@ impl Main {
                     }
                 } else {
                     warn!("Received {message:?} while state: {self:?}");
-                    info!("Updated state: {:?}", self);
+                    debug!("Updated state: {:?}", self);
                     Task::none()
                 }
             }
@@ -117,11 +117,11 @@ impl Main {
                     config: _,
                 } = self
                 else {
-                    info!("Updated state: {:?}", self);
+                    debug!("Updated state: {:?}", self);
                     return Task::none();
                 };
                 let task = app.update(client, message).map(MainMessage::App);
-                info!("Updated state: {:?}", self);
+                debug!("Updated state: {:?}", self);
                 task
             }
             MainMessage::NoAction => Task::none(),
@@ -131,7 +131,7 @@ impl Main {
     pub fn view(&'_ self) -> iced::Element<'_, MainMessage> {
         match self {
             Main::Loading => Spinner::new().into(),
-            Main::Splash(splash, _) => splash.view(),
+            Main::Splash(splash, _) => splash.view().map(MainMessage::Splash),
             Main::App { app, client: _, config: _, } => app.view().map(MainMessage::App),
         }
     }
